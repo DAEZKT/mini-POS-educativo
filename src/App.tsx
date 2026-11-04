@@ -1,0 +1,300 @@
+import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
+import {
+  ArrowUpRight, BarChart3, Check, ChevronDown, CircleHelp, ClipboardList,
+  ExternalLink, Eye, Facebook, Instagram, LayoutDashboard, LogOut, Menu,
+  Music2, Package, Plus, Printer, Search, Settings2, ShoppingBag, ShoppingCart,
+  Sparkles, Store, Tag, X, Youtube,
+} from 'lucide-react';
+import { isNeonConfigured, neon } from './lib/neon';
+import { Business, formatDate, formatMoney, priceFor, Product, Sale } from './lib/types';
+
+type Page = 'dashboard' | 'products' | 'sale' | 'history' | 'brand';
+type CartRow = { product: Product; quantity: number };
+
+const navItems: { id: Page; label: string; icon: typeof LayoutDashboard }[] = [
+  { id: 'dashboard', label: 'Resumen', icon: LayoutDashboard },
+  { id: 'products', label: 'Productos', icon: Package },
+  { id: 'sale', label: 'Nueva venta', icon: ShoppingCart },
+  { id: 'history', label: 'Ventas', icon: ClipboardList },
+  { id: 'brand', label: 'Mi negocio', icon: Settings2 },
+];
+
+function slugify(value: string) {
+  return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+}
+
+function PublicCatalog() {
+  const [business, setBusiness] = useState<Business | null>(null);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [loading, setLoading] = useState(true);
+  const slug = window.location.pathname.split('/').filter(Boolean).at(-1) || '';
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      if (!neon) { setLoading(false); return; }
+      const { data, error } = await neon.rpc('get_public_catalog', { p_slug: slug });
+      if (!active || error || !data) { setLoading(false); return; }
+      const catalog = data as { business: Business; products: Product[] };
+      if (active) { setBusiness(catalog.business); setProducts(catalog.products || []); setLoading(false); }
+    })();
+    return () => { active = false; };
+  }, [slug]);
+
+  if (loading) return <div className="public-loading">Cargando catálogo…</div>;
+  if (!business) return <div className="public-loading"><Store size={28} /><h1>Catálogo no disponible</h1><p>Revisa el enlace o contacta al negocio.</p></div>;
+  return <main className="public-page" style={{ '--brand': business.primary_color, '--brand-soft': business.secondary_color } as CSSProperties}>
+    <header className="public-header">
+      <div className="public-brand"><span className="brand-mark"><Store size={19} /></span><div><strong>{business.name}</strong><small>Catálogo de productos</small></div></div>
+      <button className="button button-outline no-print" onClick={() => window.print()}><Printer size={16} /> Imprimir catálogo</button>
+    </header>
+    <section className="public-intro"><span className="eyebrow">CATÁLOGO DISPONIBLE</span><h1>Encuentra algo que te guste.</h1><p>Explora nuestros productos y precios.</p></section>
+    <section className="public-grid">
+      {products.length === 0 ? <div className="empty-state">Aún no hay productos publicados.</div> : products.map((product) => <article className="public-product" key={product.id}>
+        <div className="product-placeholder"><ShoppingBag size={26} /></div><div className="public-product-info"><h2>{product.name}</h2><p>{product.description || ' '}</p><div className="price-line">{product.promotion_enabled && <s>{formatMoney(product.regular_price)}</s>}<strong>{formatMoney(priceFor(product))}</strong></div></div>
+      </article>)}
+    </section>
+    <footer className="public-footer">{business.address && <span>{business.address}</span>}{business.phone && <a href={`tel:${business.phone}`}>{business.phone}</a>}<span>Catálogo creado con Mini POS</span></footer>
+  </main>;
+}
+
+function AuthScreen() {
+  const [mode, setMode] = useState<'login' | 'signup'>('login');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [message, setMessage] = useState('');
+  const [busy, setBusy] = useState(false);
+  const submit = async (event: FormEvent) => {
+    event.preventDefault(); setMessage(''); setBusy(true);
+    if (!neon) { setBusy(false); return; }
+    const result = mode === 'login'
+      ? await neon.auth.signInWithPassword({ email, password })
+      : await neon.auth.signUp({ email, password });
+    if (result.error) setMessage(result.error.message);
+    else if (mode === 'signup' && !result.data.session) setMessage('Revisa tu correo para confirmar la cuenta y luego inicia sesión.');
+    else if (mode === 'signup') setMessage('Cuenta creada. Ya puedes continuar.');
+    setBusy(false);
+  };
+  return <main className="auth-shell"><section className="auth-aside"><div className="auth-logo"><span className="brand-mark"><Store size={20} /></span> mini pos</div><div className="auth-pitch"><span className="eyebrow">TU NEGOCIO, MÁS CLARO</span><h1>Vende con calma.<br /><em>Crece a tu ritmo.</em></h1><p>Productos, ventas y catálogo en un solo lugar.</p><div className="auth-feature"><span><ShoppingBag size={17} /></span>Una forma sencilla de comenzar</div></div><small className="auth-copyright">Una herramienta gratuita para emprender.</small></section>
+    <section className="auth-main"><div className="auth-form-wrap"><span className="mobile-brand"><Store size={18} /> mini pos</span><span className="eyebrow">{mode === 'login' ? 'QUÉ BUENO VERTE' : 'UN GRAN PRIMER PASO'}</span><h2>{mode === 'login' ? 'Inicia sesión' : 'Crea tu cuenta'}</h2><p className="muted">{mode === 'login' ? 'Ingresa para continuar con tu negocio.' : 'Configura tu espacio para empezar a vender.'}</p>
+    <form onSubmit={submit} className="auth-form"><label>Correo electrónico<input required type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="tu@correo.com" /></label><label>Contraseña<input required type="password" minLength={8} autoComplete={mode === 'login' ? 'current-password' : 'new-password'} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Mínimo 8 caracteres" /></label>
+      {message && <div className={message.includes('Revisa tu correo') ? 'notice success' : 'notice'}>{message}</div>}<button className="button button-primary button-full" disabled={busy}>{busy ? 'Un momento…' : mode === 'login' ? 'Iniciar sesión' : 'Crear cuenta'} <ArrowUpRight size={16} /></button></form>
+    <div className="auth-switch">{mode === 'login' ? '¿Primera vez aquí?' : '¿Ya tienes una cuenta?'} <button onClick={() => { setMode(mode === 'login' ? 'signup' : 'login'); setMessage(''); }}>{mode === 'login' ? 'Crear cuenta' : 'Iniciar sesión'}</button></div><div className="auth-secure"><span className="secure-dot" /> Acceso protegido por Neon</div></div></section></main>;
+}
+
+function SetupScreen() {
+  const socialLinks = [
+    { label: 'YouTube', href: 'https://www.youtube.com/@adn.DAEZKT', icon: Youtube },
+    { label: 'TikTok', href: 'https://www.tiktok.com/@adn.daezkt', icon: Music2 },
+    { label: 'Facebook', href: 'https://www.facebook.com/share/1dNNCMGnA8/', icon: Facebook },
+    { label: 'Instagram', href: 'https://www.instagram.com/daezkt.wsyt?dlrf=em5tcjU1cmkyaHVz', icon: Instagram },
+  ];
+
+  return <main className="setup-screen">
+    <section className="setup-config-panel">
+      <div className="setup-card">
+        <span className="brand-mark"><Store size={20} /></span>
+        <span className="eyebrow">CONFIGURACIÓN INICIAL</span>
+        <h1>Conecta tu proyecto Neon</h1>
+        <p>Configura estas variables en <code>.env.local</code> para desarrollo local o en Vercel para producción. Después, vuelve a cargar la app.</p>
+        <div className="setup-hint">
+          <strong>Variables necesarias</strong>
+          <code>VITE_NEON_AUTH_URL</code>
+          <code>VITE_NEON_DATA_API_URL</code>
+        </div>
+        <a href="https://console.neon.tech" target="_blank" rel="noreferrer" className="button button-primary">Abrir Neon <ExternalLink size={15} /></a>
+      </div>
+    </section>
+    <aside className="setup-promo-panel">
+      <div className="setup-promo-content">
+        <span className="setup-creator-label">UNA HERRAMIENTA GRATUITA DE</span>
+        <img className="setup-promo-logo" src="/brand/daezkt-logo-white.png" alt="DAEZKT — We Simplify Your Tasks" />
+        <div className="setup-promo-copy">
+          <span className="setup-promo-eyebrow">APRENDE · APLICA · CRECE</span>
+          <h2>Mejora tu negocio, un paso a la vez.</h2>
+          <p>Ideas y herramientas para optimizar procesos, aprender desarrollo y tomar mejores decisiones con datos.</p>
+        </div>
+        <nav className="setup-social-links" aria-label="Redes sociales de DAEZKT">
+          {socialLinks.map(({ label, href, icon: Icon }) => <a key={label} href={href} target="_blank" rel="noreferrer" aria-label={`Visitar DAEZKT en ${label}`}>
+            <Icon size={17} /><span>{label}</span><ExternalLink size={12} />
+          </a>)}
+        </nav>
+        <small className="setup-promo-credit">Mini POS · Edición regalo</small>
+      </div>
+    </aside>
+  </main>;
+}
+
+export default function App() {
+  const isPublic = window.location.pathname.startsWith('/catalogo/');
+  const [userId, setUserId] = useState<string | null>(null);
+  const [authReady, setAuthReady] = useState(false);
+  const [business, setBusiness] = useState<Business | null>(null);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [sales, setSales] = useState<Sale[]>([]);
+  const [page, setPage] = useState<Page>('dashboard');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [toast, setToast] = useState('');
+  const [query, setQuery] = useState('');
+  const [cart, setCart] = useState<CartRow[]>([]);
+  const [receipt, setReceipt] = useState<Sale | null>(null);
+  const [productModal, setProductModal] = useState(false);
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [period, setPeriod] = useState<'7' | '30' | 'all'>('7');
+
+  useEffect(() => {
+    if (!neon) { setAuthReady(true); return; }
+    neon.auth.getSession().then(({ data }) => { setUserId(data.session?.user.id || null); setAuthReady(true); });
+    const { data: listener } = neon.auth.onAuthStateChange((_event, session) => setUserId(session?.user.id || null));
+    return () => listener.subscription.unsubscribe();
+  }, []);
+
+  const loadWorkspace = useCallback(async () => {
+    if (!neon || !userId) return;
+    setLoading(true); setError('');
+    let { data: shop, error: shopError } = await neon.from('businesses').select('*').eq('owner_user_id', userId).maybeSingle();
+    if (shopError) { setError(shopError.message); setLoading(false); return; }
+    if (!shop) {
+      const name = 'Mi negocio';
+      const slug = `${slugify(name) || 'negocio'}-${crypto.randomUUID().slice(0, 6)}`;
+      const { data: created, error: createError } = await neon.from('businesses').insert({ owner_user_id: userId, name, public_slug: slug }).select().single();
+      if (createError) { setError(createError.message); setLoading(false); return; }
+      shop = created;
+    }
+    setBusiness(shop as Business);
+    const [{ data: productRows, error: productError }, { data: saleRows, error: saleError }] = await Promise.all([
+      neon.from('products').select('*').eq('business_id', shop.id).order('created_at', { ascending: false }),
+      neon.from('sales').select('*, sale_items(*)').eq('business_id', shop.id).order('sold_at', { ascending: false }),
+    ]);
+    if (productError || saleError) setError(productError?.message || saleError?.message || 'No se pudieron cargar los datos.');
+    setProducts((productRows || []) as Product[]); setSales((saleRows || []) as Sale[]); setLoading(false);
+  }, [userId]);
+
+  useEffect(() => { if (userId) void loadWorkspace(); else { setBusiness(null); setProducts([]); setSales([]); } }, [userId, loadWorkspace]);
+  useEffect(() => { if (toast) { const timer = window.setTimeout(() => setToast(''), 3200); return () => window.clearTimeout(timer); } }, [toast]);
+  useEffect(() => { if (business) { document.documentElement.style.setProperty('--brand', business.primary_color); document.documentElement.style.setProperty('--brand-soft', business.secondary_color); } }, [business]);
+
+  const activeProducts = products.filter((p) => p.is_active);
+  const filteredProducts = products.filter((p) => p.name.toLowerCase().includes(query.toLowerCase()));
+  const filteredActive = activeProducts.filter((p) => p.name.toLowerCase().includes(query.toLowerCase()));
+  const periodSales = useMemo(() => sales.filter((s) => period === 'all' || Date.now() - new Date(s.sold_at).getTime() <= Number(period) * 86400000), [sales, period]);
+  const totalRevenue = periodSales.reduce((sum, sale) => sum + Number(sale.total_amount), 0);
+  const itemCounts: Record<string, { name: string; count: number }> = {};
+  periodSales.forEach((sale) => (sale.sale_items || []).forEach((item) => { itemCounts[item.product_name] ||= { name: item.product_name, count: 0 }; itemCounts[item.product_name].count += item.quantity; }));
+  const bestSellers = Object.values(itemCounts).sort((a, b) => b.count - a.count).slice(0, 4);
+  const barMax = Math.max(...periodSales.slice(0, 7).map((s) => Number(s.total_amount)), 1);
+
+  if (isPublic) return <PublicCatalog />;
+  if (!authReady) return <div className="center-loader">Preparando tu espacio…</div>;
+  if (!isNeonConfigured) return <SetupScreen />;
+  if (!userId) return <AuthScreen />;
+
+  const showToast = (message: string) => setToast(message);
+  const addToCart = (product: Product) => setCart((items) => {
+    const existing = items.find((row) => row.product.id === product.id);
+    return existing ? items.map((row) => row.product.id === product.id ? { ...row, quantity: row.quantity + 1 } : row) : [...items, { product, quantity: 1 }];
+  });
+  const changeQuantity = (productId: string, delta: number) => setCart((items) => items.map((row) => row.product.id === productId ? { ...row, quantity: Math.max(0, row.quantity + delta) } : row).filter((row) => row.quantity > 0));
+  const cartTotal = cart.reduce((sum, row) => sum + priceFor(row.product) * row.quantity, 0);
+  const finalizeSale = async () => {
+    if (!neon || !cart.length) return;
+    setLoading(true); setError('');
+    const { data, error: saleError } = await neon.rpc('create_sale', { p_items: cart.map((row) => ({ product_id: row.product.id, quantity: row.quantity })) });
+    if (saleError) { setError(saleError.message); setLoading(false); return; }
+    setCart([]); await loadWorkspace();
+    const { data: created } = await neon.from('sales').select('*, sale_items(*)').eq('id', data).single();
+    if (created) setReceipt(created as Sale);
+    setPage('history'); setLoading(false); showToast('Venta registrada correctamente.');
+  };
+
+  return <div className="app-shell">
+    <aside className={`sidebar ${mobileNavOpen ? 'sidebar-open' : ''}`}><div className="sidebar-top"><a className="logo-lockup" href="#dashboard"><span className="brand-mark"><Store size={19} /></span><span>mini<span className="logo-light">pos</span><small>ESPACIO DE NEGOCIO</small></span></a><button className="icon-button mobile-close" onClick={() => setMobileNavOpen(false)} aria-label="Cerrar menú"><X size={19} /></button></div>
+      <div className="side-business"><span className="business-avatar">{business?.name.slice(0, 1).toUpperCase() || 'M'}</span><span><strong>{business?.name || 'Mi negocio'}</strong><small>Plan emprendedor</small></span><ChevronDown size={15} /></div>
+      <div className="nav-caption">MENÚ PRINCIPAL</div><nav className="main-nav">{navItems.map(({ id, label, icon: Icon }) => <button key={id} className={`nav-link ${page === id ? 'selected' : ''}`} onClick={() => { setPage(id); setMobileNavOpen(false); }}><Icon size={18} /><span>{label}</span>{id === 'sale' && cart.length > 0 && <i>{cart.reduce((n, row) => n + row.quantity, 0)}</i>}</button>)}</nav>
+      <div className="sidebar-bottom"><div className="help-card"><span><Sparkles size={17} /></span><strong>Un paso a la vez</strong><p>Tu negocio, organizado y listo para crecer.</p></div><button className="nav-link logout-link" onClick={() => neon?.auth.signOut()}><LogOut size={18} /><span>Cerrar sesión</span></button><small className="sidebar-version">MINI POS · EDICIÓN REGALO</small></div>
+    </aside>
+    {mobileNavOpen && <button className="nav-backdrop" onClick={() => setMobileNavOpen(false)} aria-label="Cerrar menú" />}
+    <main className="main-area"><header className="topbar"><button className="icon-button mobile-menu" onClick={() => setMobileNavOpen(true)} aria-label="Abrir menú"><Menu size={21} /></button><div className="breadcrumb">Mi negocio <span>/</span> <strong>{navItems.find((item) => item.id === page)?.label}</strong></div><div className="top-actions"><a className="catalog-link" href={`/catalogo/${business?.public_slug}`} target="_blank" rel="noreferrer"><Eye size={16} /> Ver catálogo <ExternalLink size={13} /></a><span className="top-avatar">{business?.name.slice(0, 1).toUpperCase() || 'M'}</span></div></header>
+      <div className="content-wrap">
+        {error && <div className="notice page-notice"><CircleHelp size={17} /><span>{error}</span><button onClick={() => setError('')}><X size={16} /></button></div>}
+        {loading && <div className="loading-strip"><span /> Sincronizando información…</div>}
+        {page === 'dashboard' && <Dashboard business={business} sales={periodSales} total={totalRevenue} products={products} bestSellers={bestSellers} barMax={barMax} period={period} setPeriod={setPeriod} />}
+        {page === 'products' && <ProductsPage products={filteredProducts} query={query} setQuery={setQuery} onAdd={() => { setEditingProduct(null); setProductModal(true); }} onEdit={(p) => { setEditingProduct(p); setProductModal(true); }} onToggle={async (product) => {
+          if (!neon) return;
+          const { error: e } = await neon.from('products').update({ is_active: !product.is_active }).eq('id', product.id);
+          if (e) setError(e.message); else { await loadWorkspace(); showToast(product.is_active ? 'Producto desactivado.' : 'Producto activado.'); }
+        }} />}
+        {page === 'sale' && <SalePage products={filteredActive} query={query} setQuery={setQuery} cart={cart} addToCart={addToCart} changeQuantity={changeQuantity} total={cartTotal} onFinalize={finalizeSale} />}
+        {page === 'history' && <HistoryPage sales={sales} onReceipt={setReceipt} />}
+        {page === 'brand' && business && <BrandPage business={business} onSaved={(b) => { setBusiness(b); showToast('La marca del negocio se guardó.'); }} setError={setError} />}
+      </div>
+    </main>
+    {productModal && business && <ProductModal businessId={business.id} product={editingProduct} onClose={() => setProductModal(false)} onSaved={async () => { setProductModal(false); await loadWorkspace(); showToast(editingProduct ? 'Producto actualizado.' : 'Producto agregado.'); }} setError={setError} />}
+    {receipt && business && <ReceiptModal sale={receipt} business={business} onClose={() => setReceipt(null)} />}
+    {toast && <div className="toast"><span><Check size={15} /></span>{toast}</div>}
+  </div>;
+}
+
+function PageHeading({ eyebrow, title, description, action }: { eyebrow: string; title: string; description: string; action?: ReactNode }) {
+  return <div className="page-heading"><div><span className="eyebrow">{eyebrow}</span><h1>{title}</h1><p>{description}</p></div>{action}</div>;
+}
+
+function Dashboard({ business, sales, total, products, bestSellers, barMax, period, setPeriod }: { business: Business | null; sales: Sale[]; total: number; products: Product[]; bestSellers: {name:string;count:number}[]; barMax: number; period:'7'|'30'|'all'; setPeriod:(v:'7'|'30'|'all')=>void }) {
+  const activeCount = products.filter((p) => p.is_active).length;
+  return <><PageHeading eyebrow="VISTA GENERAL" title={`Hola, ${business?.name || 'emprendedor'}.`} description="Aquí tienes un vistazo de cómo va tu negocio." action={<select className="select-control period-select" value={period} onChange={(e) => setPeriod(e.target.value as '7'|'30'|'all')}><option value="7">Últimos 7 días</option><option value="30">Últimos 30 días</option><option value="all">Todo el historial</option></select>} />
+    <div className="stats-grid"><StatCard label="Ventas del período" value={formatMoney(total)} icon={BarChart3} hint={sales.length ? `${sales.length} ventas registradas` : 'Aún no hay ventas'} /><StatCard label="Ventas realizadas" value={String(sales.length)} icon={ShoppingBag} hint="En el período seleccionado" /><StatCard label="Productos activos" value={String(activeCount)} icon={Package} hint={`De ${products.length} productos registrados`} /></div>
+    <div className="dashboard-grid"><section className="panel sales-chart-panel"><div className="panel-heading"><div><h2>Actividad reciente</h2><p>Ventas registradas en este período</p></div><span className="tiny-tag"><span className="green-dot" /> EN VIVO</span></div>{sales.length === 0 ? <div className="chart-empty"><span><BarChart3 size={23} /></span><strong>Tu primera venta aparecerá aquí</strong><p>Cuando registres una venta, podrás seguir cómo se mueve tu negocio.</p></div> : <div className="bar-chart">{sales.slice(0, 7).reverse().map((sale) => <div className="bar-column" key={sale.id}><div className="bar-value">{formatMoney(Number(sale.total_amount))}</div><div className="bar-track"><div className="bar-fill" style={{ height: `${Math.max(Number(sale.total_amount) / barMax * 100, 8)}%` }} /></div><small>{new Date(sale.sold_at).toLocaleDateString('es-NI', { day: '2-digit', month: 'short' })}</small></div>)}</div>}</section>
+      <section className="panel best-panel"><div className="panel-heading"><div><h2>Más vendidos</h2><p>Unidades en el período</p></div><span className="icon-surface"><Sparkles size={16} /></span></div>{bestSellers.length ? <div className="ranking-list">{bestSellers.map((item, index) => <div className="ranking-row" key={item.name}><span className={`rank-number rank-${index+1}`}>{String(index+1).padStart(2,'0')}</span><span className="rank-product"><strong>{item.name}</strong><small>{item.count} unidades</small></span><span className="rank-bar"><i style={{ width: `${Math.max(item.count / bestSellers[0].count * 100, 10)}%` }} /></span></div>)}</div> : <div className="mini-empty">Los productos más vendidos aparecerán aquí cuando registres ventas.</div>}<div className="best-footer"><span><ArrowUpRight size={15} /> Unidades vendidas</span><span>{bestSellers.reduce((sum, item) => sum + item.count, 0)}</span></div></section></div>
+    <section className="welcome-strip"><span className="welcome-icon"><Tag size={19} /></span><div><strong>Prepara tu catálogo público</strong><p>Activa tus productos y comparte tu catálogo cuando quieras.</p></div><span className="welcome-progress"><i style={{ width: products.length ? '70%' : '20%' }} /></span><span className="welcome-step">{products.length ? 'Un buen comienzo' : 'Paso 1 de 3'}</span></section>
+  </>;
+}
+
+function StatCard({ label, value, icon: Icon, hint, trend }: { label: string; value: string; icon: typeof BarChart3; hint: string; trend?: string }) {
+  return <article className="stat-card"><div className="stat-card-top"><span>{label}</span><span className="stat-icon"><Icon size={18} /></span></div><strong className="stat-value">{value}</strong><div className="stat-foot"><span>{hint}</span>{trend && <span className={`trend ${trend.startsWith('-')?'negative':''}`}><ArrowUpRight size={13} />{trend}</span>}</div></article>;
+}
+
+function ProductsPage({ products, query, setQuery, onAdd, onEdit, onToggle }: { products: Product[]; query:string; setQuery:(v:string)=>void; onAdd:()=>void; onEdit:(p:Product)=>void; onToggle:(p:Product)=>void }) {
+  return <><PageHeading eyebrow="TU CATÁLOGO" title="Productos" description="Organiza lo que vendes y mantén tus precios al día." action={<button className="button button-primary" onClick={onAdd}><Plus size={16} /> Agregar producto</button>} />
+    <section className="panel table-panel"><div className="table-toolbar"><div className="search-box"><Search size={16} /><input placeholder="Buscar producto…" value={query} onChange={(e)=>setQuery(e.target.value)} /></div><span className="item-count">{products.length} productos</span></div>
+    {products.length ? <div className="table-scroll"><table><thead><tr><th>PRODUCTO</th><th>PRECIO</th><th>PROMOCIÓN</th><th>ESTADO</th><th></th></tr></thead><tbody>{products.map((p)=> <tr key={p.id}><td><div className="table-product"><span className="product-mini"><ShoppingBag size={16}/></span><span><strong>{p.name}</strong><small>{p.description || 'Sin descripción'}</small></span></div></td><td><div className="price-cell">{p.promotion_enabled && <s>{formatMoney(p.regular_price)}</s>}<strong>{formatMoney(priceFor(p))}</strong></div></td><td>{p.promotion_enabled ? <span className="status-pill promo"><Tag size={13}/> Activa</span> : <span className="subtle-text">Sin promoción</span>}</td><td><button className={`status-toggle ${p.is_active?'on':''}`} onClick={()=>onToggle(p)}><i />{p.is_active?'Activo':'Inactivo'}</button></td><td><button className="icon-button table-edit" onClick={()=>onEdit(p)} aria-label={`Editar ${p.name}`}><Settings2 size={16}/></button></td></tr>)}</tbody></table></div> : <div className="empty-state"><span className="empty-icon"><Package size={24}/></span><strong>{query?'No encontramos ese producto':'Tu catálogo empieza aquí'}</strong><p>{query?'Prueba con otro nombre.':'Agrega tus productos y configura el precio que quieres ofrecer.'}</p>{!query && <button className="button button-primary" onClick={onAdd}><Plus size={15}/> Agregar primer producto</button>}</div>}</section>
+  </>;
+}
+
+function SalePage({ products, query, setQuery, cart, addToCart, changeQuantity, total, onFinalize }: { products:Product[]; query:string; setQuery:(v:string)=>void; cart:CartRow[]; addToCart:(p:Product)=>void; changeQuantity:(id:string,d:number)=>void; total:number; onFinalize:()=>void }) {
+  return <><PageHeading eyebrow="PUNTO DE VENTA" title="Nueva venta" description="Selecciona productos y confirma la venta." />
+    <div className="pos-layout"><section className="pos-products"><div className="search-box product-search"><Search size={16}/><input placeholder="Buscar productos activos…" value={query} onChange={(e)=>setQuery(e.target.value)}/></div><div className="pos-product-grid">{products.map((p)=> <button key={p.id} className="pos-product-card" onClick={()=>addToCart(p)}><span className="product-placeholder"><ShoppingBag size={23}/></span><span className="pos-product-info"><strong>{p.name}</strong>{p.promotion_enabled&&<s>{formatMoney(p.regular_price)}</s>}<b>{formatMoney(priceFor(p))}</b></span><span className="add-circle"><Plus size={16}/></span></button>)}</div>{!products.length&&<div className="empty-state"><span className="empty-icon"><Package size={23}/></span><strong>No hay productos activos</strong><p>Activa productos para que aparezcan aquí.</p></div>}</section>
+      <aside className="cart-panel"><div className="cart-heading"><span className="cart-icon"><ShoppingCart size={18}/></span><div><h2>Tu venta</h2><p>{cart.reduce((n,row)=>n+row.quantity,0)} artículos</p></div><span className="cart-count">{cart.length}</span></div><div className="cart-items">{cart.map(({product,quantity})=><div className="cart-row" key={product.id}><div className="cart-product"><strong>{product.name}</strong><small>{formatMoney(priceFor(product))} c/u</small></div><div className="quantity-control"><button onClick={()=>changeQuantity(product.id,-1)} aria-label="Restar una unidad">−</button><span>{quantity}</span><button onClick={()=>changeQuantity(product.id,1)} aria-label="Agregar una unidad">+</button></div><strong className="cart-line-total">{formatMoney(priceFor(product)*quantity)}</strong></div>)}{!cart.length&&<div className="cart-empty"><span><ShoppingCart size={23}/></span><strong>Tu venta está vacía</strong><small>Selecciona productos para comenzar.</small></div>}</div><div className="cart-summary"><div><span>Subtotal</span><span>{formatMoney(total)}</span></div><div className="cart-total"><strong>Total</strong><strong>{formatMoney(total)}</strong></div><button disabled={!cart.length} className="button button-primary button-full" onClick={onFinalize}>Confirmar venta <ArrowUpRight size={16}/></button><small><Check size={13}/> Los precios se guardan al confirmar</small></div></aside></div>
+  </>;
+}
+
+function HistoryPage({ sales, onReceipt }: { sales:Sale[]; onReceipt:(sale:Sale)=>void }) {
+  return <><PageHeading eyebrow="MOVIMIENTOS" title="Ventas" description="Consulta tus ventas y vuelve a imprimir un comprobante." />
+    <section className="panel table-panel"><div className="table-toolbar"><div><strong className="table-title">Historial de ventas</strong><p>Las ventas guardan los precios aplicados al momento de confirmar.</p></div><span className="item-count">{sales.length} recientes</span></div>
+    {sales.length ? <div className="table-scroll"><table><thead><tr><th>VENTA</th><th>FECHA</th><th>ARTÍCULOS</th><th>TOTAL</th><th></th></tr></thead><tbody>{sales.map((sale)=><tr key={sale.id}><td><div className="sale-number"><span className="sale-mini"><ShoppingBag size={15}/></span><strong>#{String(sale.sale_number).padStart(5,'0')}</strong></div></td><td>{formatDate(sale.sold_at)}</td><td>{(sale.sale_items||[]).reduce((n,item)=>n+item.quantity,0)} unidades</td><td><strong>{formatMoney(Number(sale.total_amount))}</strong></td><td><button className="button button-small button-outline" onClick={()=>onReceipt(sale)}><Printer size={14}/> Comprobante</button></td></tr>)}</tbody></table></div> : <div className="empty-state"><span className="empty-icon"><ClipboardList size={23}/></span><strong>Las ventas aparecerán aquí</strong><p>Registra tu primera venta para empezar tu historial.</p></div>}</section>
+  </>;
+}
+
+function BrandPage({ business, onSaved, setError }: { business:Business; onSaved:(b:Business)=>void; setError:(v:string)=>void }) {
+  const [form,setForm]=useState({name:business.name,primary_color:business.primary_color,secondary_color:business.secondary_color,address:business.address||'',phone:business.phone||''});
+  const [saving,setSaving]=useState(false);
+  const save=async(e:FormEvent)=>{e.preventDefault();if(!neon)return;setSaving(true);setError('');const {data,error}=await neon.from('businesses').update(form).eq('id',business.id).select().single();if(error)setError(error.message);else onSaved(data as Business);setSaving(false);};
+  const catalogUrl=`${window.location.origin}/catalogo/${business.public_slug}`;
+  return <><PageHeading eyebrow="IDENTIDAD DE TU NEGOCIO" title="Mi negocio" description="Elige cómo se verá tu marca en la app y el catálogo público." />
+    <div className="brand-layout"><form className="panel brand-form" onSubmit={save}><div className="panel-heading"><div><h2>Información del negocio</h2><p>Estos datos se muestran en tus documentos y catálogo.</p></div><span className="icon-surface"><Store size={16}/></span></div><label>Nombre del negocio<input required maxLength={80} value={form.name} onChange={(e)=>setForm({...form,name:e.target.value})}/></label><div className="form-two"><label>Color principal<div className="color-field"><input type="color" value={form.primary_color} onChange={(e)=>setForm({...form,primary_color:e.target.value})}/><span>{form.primary_color.toUpperCase()}</span></div></label><label>Color secundario<div className="color-field"><input type="color" value={form.secondary_color} onChange={(e)=>setForm({...form,secondary_color:e.target.value})}/><span>{form.secondary_color.toUpperCase()}</span></div></label></div><label>Dirección <span className="optional">OPCIONAL</span><input maxLength={180} value={form.address} onChange={(e)=>setForm({...form,address:e.target.value})} placeholder="Dirección de tu negocio"/></label><label>Teléfono <span className="optional">OPCIONAL</span><input maxLength={30} value={form.phone} onChange={(e)=>setForm({...form,phone:e.target.value})} placeholder="+505 0000 0000"/></label><div className="brand-form-footer"><span><Check size={14}/> Se aplicará a catálogo y comprobantes</span><button className="button button-primary" disabled={saving}>{saving?'Guardando…':'Guardar cambios'}</button></div></form>
+    <aside className="brand-side"><section className="panel brand-preview"><div className="preview-label"><span className="green-dot"/> VISTA PREVIA DEL CATÁLOGO</div><div className="preview-banner" style={{background:form.primary_color}}><span className="preview-brand-icon"><Store size={18}/></span><strong>{form.name||'Tu negocio'}</strong><small>Catálogo de productos</small></div><div className="preview-body"><div className="preview-product"><span><ShoppingBag size={17}/></span><div><b>Producto de ejemplo</b><small>Descripción de tu producto</small></div><strong>C$ 250</strong></div><div className="preview-product"><span><ShoppingBag size={17}/></span><div><b>Otro producto</b><small>Disponible para tu catálogo</small></div><strong>C$ 180</strong></div></div></section><section className="panel share-panel"><span className="share-icon"><ExternalLink size={17}/></span><div><strong>Tu catálogo público</strong><p>Comparte el enlace con tus clientes.</p></div><div className="share-url"><input readOnly value={catalogUrl}/><button onClick={()=>{void navigator.clipboard.writeText(catalogUrl);}} title="Copiar enlace"><ClipboardList size={15}/></button></div><a className="text-link" href={catalogUrl} target="_blank" rel="noreferrer">Abrir catálogo <ArrowUpRight size={14}/></a></section></aside></div>
+  </>;
+}
+
+function ProductModal({ businessId, product, onClose, onSaved, setError }: { businessId:string; product:Product|null; onClose:()=>void; onSaved:()=>void; setError:(v:string)=>void }) {
+  const [name,setName]=useState(product?.name||'');const [description,setDescription]=useState(product?.description||'');const [regular,setRegular]=useState(product?String(product.regular_price):'');const [promoPrice,setPromoPrice]=useState(product?.promotional_price?String(product.promotional_price):'');const [active,setActive]=useState(product?.is_active??true);const [promo,setPromo]=useState(product?.promotion_enabled??false);const [saving,setSaving]=useState(false);
+  const save=async(e:FormEvent)=>{e.preventDefault();if(!neon)return;const regularNumber=Number(regular);const promoNumber=Number(promoPrice);if(!Number.isFinite(regularNumber)||regularNumber<=0){setError('Ingresa un precio normal mayor que cero.');return;}if(promo&&(!Number.isFinite(promoNumber)||promoNumber<=0||promoNumber>=regularNumber)){setError('El precio promocional debe ser mayor que cero y menor que el precio normal.');return;}setSaving(true);setError('');const payload={business_id:businessId,name:name.trim(),description:description.trim()||null,regular_price:regularNumber,promotional_price:promoPrice?promoNumber:null,promotion_enabled:promo,is_active:active};const result=product?await neon.from('products').update(payload).eq('id',product.id):await neon.from('products').insert(payload);if(result.error)setError(result.error.message);else onSaved();setSaving(false);};
+  return <div className="modal-backdrop" onMouseDown={(e)=>e.target===e.currentTarget&&onClose()}><form className="modal-card product-modal" onSubmit={save}><div className="modal-heading"><div><span className="eyebrow">{product?'ACTUALIZAR':'NUEVO' } PRODUCTO</span><h2>{product?'Editar producto':'Agrega un producto'}</h2></div><button type="button" className="icon-button" onClick={onClose}><X size={19}/></button></div><label>Nombre del producto<input required autoFocus maxLength={100} value={name} onChange={(e)=>setName(e.target.value)} placeholder="Ej. Blusa de lino"/></label><label>Descripción <span className="optional">OPCIONAL</span><textarea rows={2} maxLength={300} value={description} onChange={(e)=>setDescription(e.target.value)} placeholder="Detalles que quieras compartir"/></label><div className="form-two"><label>Precio normal<input required type="number" min="0.01" step="0.01" value={regular} onChange={(e)=>setRegular(e.target.value)} placeholder="0.00"/></label><label>Precio promocional<input type="number" min="0.01" step="0.01" value={promoPrice} onChange={(e)=>setPromoPrice(e.target.value)} placeholder="Sin promoción" disabled={!promo}/></label></div><div className="setting-row"><span><strong>Promoción activa</strong><small>Usar el precio promocional hasta que la desactives.</small></span><button type="button" role="switch" aria-checked={promo} className={`switch ${promo?'checked':''}`} onClick={()=>setPromo(!promo)}><i/></button></div><div className="setting-row"><span><strong>Producto activo</strong><small>Disponible en venta y catálogo público.</small></span><button type="button" role="switch" aria-checked={active} className={`switch ${active?'checked':''}`} onClick={()=>setActive(!active)}><i/></button></div><div className="modal-actions"><button type="button" className="button button-outline" onClick={onClose}>Cancelar</button><button className="button button-primary" disabled={saving}>{saving?'Guardando…':product?'Guardar cambios':'Agregar producto'}</button></div></form></div>;
+}
+
+function ReceiptModal({ sale, business, onClose }: { sale:Sale; business:Business; onClose:()=>void }) {
+  const items=sale.sale_items||[];
+  return <div className="modal-backdrop" onMouseDown={(e)=>e.target===e.currentTarget&&onClose()}><div className="modal-card receipt-modal"><div className="modal-heading no-print"><div><span className="eyebrow">COMPROBANTE DE VENTA</span><h2>Venta #{String(sale.sale_number).padStart(5,'0')}</h2></div><button className="icon-button" onClick={onClose}><X size={19}/></button></div><div className="receipt-paper" id="print-receipt"><div className="receipt-brand"><span className="brand-mark"><Store size={17}/></span><strong>{business.name}</strong>{business.address&&<small>{business.address}</small>}{business.phone&&<small>{business.phone}</small>}</div><div className="receipt-meta"><span>Comprobante #{String(sale.sale_number).padStart(5,'0')}</span><span>{formatDate(sale.sold_at)}</span></div><div className="receipt-lines">{items.map((item)=><div className="receipt-line" key={item.id}><span>{item.quantity} × {item.product_name}{item.promotion_applied&&<small>Promoción aplicada</small>}</span><strong>{formatMoney(Number(item.line_total))}</strong></div>)}</div><div className="receipt-total"><span>Total</span><strong>{formatMoney(Number(sale.total_amount))}</strong></div><p className="receipt-thanks">¡Gracias por tu compra!</p></div><div className="modal-actions no-print"><button className="button button-outline" onClick={onClose}>Cerrar</button><button className="button button-primary" onClick={()=>window.print()}><Printer size={15}/> Imprimir / Guardar PDF</button></div></div></div>;
+}
