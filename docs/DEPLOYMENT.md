@@ -43,6 +43,8 @@ Después de desplegar la versión que incluye imágenes, aplica una sola vez `da
 
 Para habilitar categorías, aplica después `database/migrations/202611040002_product_categories.sql` una sola vez en esa misma branch. Crea las categorías por negocio, agrega la relación opcional desde productos y actualiza el catálogo público para devolver el nombre de categoría. Si preparas una instalación nueva, aplica las migraciones en orden: inicial, imágenes y categorías.
 
+Para configurar la moneda, aplica después `database/migrations/202611050001_business_currency.sql` una sola vez en la misma branch. Luego el emprendedor puede elegirla desde **Mi negocio**. La selección cambia el formato de los importes; no convierte ni recalcula los valores numéricos ya guardados. Para instalaciones nuevas, aplica también esta migración después de las anteriores.
+
 ## 3. Ejecutar localmente
 
 1. Instala Node.js 20 o posterior y npm.
