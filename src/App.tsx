@@ -87,6 +87,8 @@ function AuthScreen({ onAuthenticated }: { onAuthenticated: (userId: string) => 
   const [password, setPassword] = useState('');
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
+  const [verificationPending, setVerificationPending] = useState(false);
+  const [verificationCode, setVerificationCode] = useState('');
   const submit = async (event: FormEvent) => {
     event.preventDefault(); setMessage(''); setBusy(true);
     try {
@@ -94,7 +96,17 @@ function AuthScreen({ onAuthenticated }: { onAuthenticated: (userId: string) => 
       const result = mode === 'login'
         ? await neon.auth.signInWithPassword({ email, password })
         : await neon.auth.signUp({ email, password });
-      if (result.error) setMessage(result.error.message);
+      if (result.error) {
+        const code = result.error.code?.toLowerCase() || '';
+        const detail = result.error.message.toLowerCase();
+        if (mode === 'signup' && (code === 'session_not_found' || detail.includes('session'))) {
+          setVerificationPending(true);
+          setMessage('Tu cuenta fue creada y necesita verificar el correo. Revisa tu bandeja de entrada para encontrar el código de verificación.');
+        } else if (mode === 'login' && (code === 'email_not_confirmed' || code === 'email_not_verified' || (detail.includes('email') && (detail.includes('not verified') || detail.includes('not confirmed') || detail.includes('verification'))))) {
+          setVerificationPending(true);
+          setMessage('Este correo todavía no está verificado. Solicita un nuevo código y confírmalo aquí.');
+        } else setMessage(result.error.message);
+      }
       else if (result.data.session) {
         onAuthenticated(result.data.session.user.id);
       } else if (mode === 'signup') setMessage('Cuenta creada. Para entrar, confirma el correo con el enlace que envía Neon Auth. Revisa también spam. Si no llega, el envío de correo debe estar configurado en Neon Auth.');
@@ -105,11 +117,40 @@ function AuthScreen({ onAuthenticated }: { onAuthenticated: (userId: string) => 
       setBusy(false);
     }
   };
+  const resendVerification = async () => {
+    if (!neon || !email.trim()) return;
+    setBusy(true); setMessage('');
+    try {
+      const result = await neon.auth.resend({ type: 'signup', email: email.trim() });
+      if (result.error) setMessage(result.error.message);
+      else setMessage('Solicitamos un nuevo correo de verificación. Revisa tu bandeja de entrada y spam.');
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'No se pudo reenviar el correo.');
+    } finally { setBusy(false); }
+  };
+  const verifyEmail = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!neon) return;
+    setBusy(true); setMessage('');
+    try {
+      const result = await neon.auth.verifyOtp({ email: email.trim(), token: verificationCode.trim(), type: 'signup' });
+      if (result.error) { setMessage(result.error.message); return; }
+      if (result.data.session) onAuthenticated(result.data.session.user.id);
+      else {
+        const login = await neon.auth.signInWithPassword({ email: email.trim(), password });
+        if (login.error) setMessage(login.error.message);
+        else if (login.data.session) onAuthenticated(login.data.session.user.id);
+        else setMessage('Correo verificado. Inicia sesión para continuar.');
+      }
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'No se pudo verificar el correo.');
+    } finally { setBusy(false); }
+  };
   return <main className="auth-shell"><section className="auth-aside"><div className="auth-logo"><span className="brand-mark"><Store size={20} /></span> mini pos</div><div className="auth-pitch"><span className="eyebrow">TU NEGOCIO, MÁS CLARO</span><h1>Vende con calma.<br /><em>Crece a tu ritmo.</em></h1><p>Productos, ventas y catálogo en un solo lugar.</p><div className="auth-feature"><span><ShoppingBag size={17} /></span>Una forma sencilla de comenzar</div></div><small className="auth-copyright">Una herramienta gratuita para emprender.</small></section>
-    <section className="auth-main"><div className="auth-form-wrap"><span className="mobile-brand"><Store size={18} /> mini pos</span><span className="eyebrow">{mode === 'login' ? 'QUÉ BUENO VERTE' : 'UN GRAN PRIMER PASO'}</span><h2>{mode === 'login' ? 'Inicia sesión' : 'Crea tu cuenta'}</h2><p className="muted">{mode === 'login' ? 'Ingresa para continuar con tu negocio.' : 'Configura tu espacio para empezar a vender.'}</p>{mode === 'signup' && <p className="muted" style={{ marginTop: 10, lineHeight: 1.6 }}>Si Neon solicita verificar tu correo, abre el enlace que recibas antes de iniciar sesión. Revisa spam; si no llega, contacta al administrador para revisar el envío de correo.</p>}
-    <form onSubmit={submit} className="auth-form"><label>Correo electrónico<input required type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="tu@correo.com" /></label><label>Contraseña<input required type="password" minLength={8} autoComplete={mode === 'login' ? 'current-password' : 'new-password'} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Mínimo 8 caracteres" /></label>
-      {message && <div className={message.includes('Revisa tu correo') ? 'notice success' : 'notice'}>{message}</div>}<button className="button button-primary button-full" disabled={busy}>{busy ? 'Un momento…' : mode === 'login' ? 'Iniciar sesión' : 'Crear cuenta'} <ArrowUpRight size={16} /></button></form>
-    <div className="auth-switch">{mode === 'login' ? '¿Primera vez aquí?' : '¿Ya tienes una cuenta?'} <button onClick={() => { setMode(mode === 'login' ? 'signup' : 'login'); setMessage(''); }}>{mode === 'login' ? 'Crear cuenta' : 'Iniciar sesión'}</button></div><div className="auth-secure"><span className="secure-dot" /> Acceso protegido por Neon</div></div></section></main>;
+    <section className="auth-main"><div className="auth-form-wrap"><span className="mobile-brand"><Store size={18} /> mini pos</span><span className="eyebrow">{mode === 'login' ? 'QUÉ BUENO VERTE' : 'UN GRAN PRIMER PASO'}</span><h2>{mode === 'login' ? 'Inicia sesión' : 'Crea tu cuenta'}</h2><p className="muted">{mode === 'login' ? 'Ingresa para continuar con tu negocio.' : 'Configura tu espacio para empezar a vender.'}</p>{mode === 'signup' && <p className="muted" style={{ marginTop: 10, lineHeight: 1.6 }}>Si la verificación está activa, confirma el correo antes de entrar. Revisa también spam. Si no recibes el código, usa “Reenviar código” o revisa la configuración de correo en Neon.</p>}
+    {verificationPending ? <form onSubmit={verifyEmail} className="auth-form"><label>Correo electrónico<input required type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="tu@correo.com" /></label><label>Código de verificación<input required inputMode="numeric" autoComplete="one-time-code" value={verificationCode} onChange={(e) => setVerificationCode(e.target.value)} placeholder="Código del correo" /></label>{message && <div className="notice">{message}</div>}<button className="button button-primary button-full" disabled={busy}>{busy ? 'Verificando…' : 'Verificar correo'} <ArrowUpRight size={16} /></button><button type="button" className="button button-outline button-full" disabled={busy} onClick={()=>void resendVerification()}>Reenviar código</button><div className="auth-switch"><button type="button" onClick={()=>{setVerificationPending(false);setVerificationCode('');setMessage('');}}>Volver al inicio de sesión</button></div></form> : <><form onSubmit={submit} className="auth-form"><label>Correo electrónico<input required type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="tu@correo.com" /></label><label>Contraseña<input required type="password" minLength={8} autoComplete={mode === 'login' ? 'current-password' : 'new-password'} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Mínimo 8 caracteres" /></label>
+      {message && <div className="notice">{message}</div>}<button className="button button-primary button-full" disabled={busy}>{busy ? 'Un momento…' : mode === 'login' ? 'Iniciar sesión' : 'Crear cuenta'} <ArrowUpRight size={16} /></button></form>
+    <div className="auth-switch">{mode === 'login' ? '¿Primera vez aquí?' : '¿Ya tienes una cuenta?'} <button onClick={() => { setMode(mode === 'login' ? 'signup' : 'login'); setMessage(''); }}>{mode === 'login' ? 'Crear cuenta' : 'Iniciar sesión'}</button></div></>}<div className="auth-secure"><span className="secure-dot" /> Acceso protegido por Neon</div></div></section></main>;
 }
 
 function SetupScreen() {
