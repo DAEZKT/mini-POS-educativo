@@ -38,6 +38,16 @@ function groupProducts(products: Product[], getCategoryName: (product: Product) 
   return [...groups.values()].sort((a, b) => a.name === 'Sin categoría' ? 1 : b.name === 'Sin categoría' ? -1 : a.name.localeCompare(b.name, 'es'));
 }
 
+function withTimeout<T>(request: PromiseLike<T>, milliseconds: number): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = window.setTimeout(() => reject(new Error('REQUEST_TIMEOUT')), milliseconds);
+    Promise.resolve(request).then(
+      (value) => { window.clearTimeout(timer); resolve(value); },
+      (error: unknown) => { window.clearTimeout(timer); reject(error); },
+    );
+  });
+}
+
 function PublicCatalog() {
   const [business, setBusiness] = useState<Business | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
@@ -363,17 +373,22 @@ function ProductModal({ businessId, product, categories, onAddCategory, onClose,
   const [imageFile,setImageFile]=useState<File|null>(null);
   const [imagePreview,setImagePreview]=useState(product?.image_url||'');
   const [saving,setSaving]=useState(false);
+  const [saveTimedOut,setSaveTimedOut]=useState(false);
+  const [formError,setFormError]=useState('');
+  const [saveStatus,setSaveStatus]=useState('');
 
   useEffect(()=>()=>{if(imagePreview.startsWith('blob:'))URL.revokeObjectURL(imagePreview);},[imagePreview]);
+
+  const reportError=(message:string)=>{setFormError(message);setError(message);};
 
   const save=async(e:FormEvent)=>{
     e.preventDefault();
     if(!neon)return;
     const regularNumber=Number(regular),promoNumber=Number(promoPrice);
-    if(!Number.isFinite(regularNumber)||regularNumber<=0){setError('Ingresa un precio normal mayor que cero.');return;}
-    if(promo&&(!Number.isFinite(promoNumber)||promoNumber<=0||promoNumber>=regularNumber)){setError('El precio promocional debe ser mayor que cero y menor que el precio normal.');return;}
-    if(imageFile&&imageFile.size>5*1024*1024){setError('La imagen debe pesar 5 MB o menos.');return;}
-    setSaving(true);setError('');
+    if(!Number.isFinite(regularNumber)||regularNumber<=0){reportError('Ingresa un precio normal mayor que cero.');return;}
+    if(promo&&(!Number.isFinite(promoNumber)||promoNumber<=0||promoNumber>=regularNumber)){reportError('El precio promocional debe ser mayor que cero y menor que el precio normal.');return;}
+    if(imageFile&&imageFile.size>5*1024*1024){reportError('La imagen debe pesar 5 MB o menos.');return;}
+    setSaving(true);setSaveStatus(imageFile?'Subiendo imagen…':'Guardando producto…');setFormError('');setError('');
     try{
       let nextImageUrl=imageUrl;
       if(imageFile){
@@ -381,32 +396,45 @@ function ProductModal({ businessId, product, categories, onAddCategory, onClose,
         const accessToken=data.session?.access_token;
         if(!accessToken)throw new Error('Tu sesión expiró. Inicia sesión de nuevo para subir imágenes.');
         const extension=imageFile.type==='image/png'?'png':imageFile.type==='image/webp'?'webp':'jpg';
-        const blob=await uploadBlob(`products/${businessId}/${crypto.randomUUID()}.${extension}`,imageFile,{
-          access:'public',handleUploadUrl:'/api/product-image-upload',clientPayload:accessToken,contentType:imageFile.type,
-        });
+        const uploadController=new AbortController();
+        const uploadTimer=window.setTimeout(()=>uploadController.abort(),30000);
+        let blob;
+        try{
+          blob=await uploadBlob(`products/${businessId}/${crypto.randomUUID()}.${extension}`,imageFile,{
+            access:'public',handleUploadUrl:'/api/product-image-upload',clientPayload:accessToken,contentType:imageFile.type,abortSignal:uploadController.signal,
+          });
+        }finally{window.clearTimeout(uploadTimer);}
         nextImageUrl=blob.url;
       }
+      setSaveStatus('Guardando producto en Neon…');
       const payload={business_id:businessId,category_id:categoryId||null,name:name.trim(),description:description.trim()||null,image_url:nextImageUrl||null,regular_price:regularNumber,promotional_price:promoPrice?promoNumber:null,promotion_enabled:promo,is_active:active};
-      const result=product?await neon.from('products').update(payload).eq('id',product.id):await neon.from('products').insert(payload);
+      const request=product?neon.from('products').update(payload).eq('id',product.id):neon.from('products').insert(payload);
+      const result=await withTimeout(request,25000);
       if(result.error)throw new Error(result.error.message);
       await onSaved();
-    }catch(error){setError(error instanceof Error?error.message:'No se pudo guardar el producto.');}
-    finally{setSaving(false);}
+    }catch(error){
+      if(error instanceof Error&&error.message==='REQUEST_TIMEOUT'){
+        setSaveTimedOut(true);
+        reportError('Neon no respondió a tiempo. La solicitud pudo haberse procesado: cierra este formulario, recarga Productos y verifica si el producto aparece antes de volver a intentarlo.');
+      }else if(error instanceof Error&&error.name==='AbortError')reportError('La subida de la imagen tardó demasiado. Revisa tu conexión e intenta de nuevo.');
+      else reportError(error instanceof Error?error.message:'No se pudo guardar el producto.');
+    }finally{setSaving(false);setSaveStatus('');}
   };
 
   const selectImage=(file:File|null)=>{
     if(!file){setImageFile(null);setImageUrl('');setImagePreview('');return;}
-    if(!['image/jpeg','image/png','image/webp'].includes(file.type)){setError('Elige una imagen JPG, PNG o WebP.');return;}
-    setError('');setImageFile(file);setImageUrl('');setImagePreview(URL.createObjectURL(file));
+    if(!['image/jpeg','image/png','image/webp'].includes(file.type)){reportError('Elige una imagen JPG, PNG o WebP.');return;}
+    setFormError('');setError('');setImageFile(file);setImageUrl('');setImagePreview(URL.createObjectURL(file));
   };
 
   const createCategory=async()=>{
     if(!newCategoryName.trim()||categoryBusy)return;
-    setCategoryBusy(true);
+    setCategoryBusy(true);setFormError('');setError('');
     try{
       const created=await onAddCategory(newCategoryName);
       if(created){setCategoryId(created.id);setNewCategoryName('');setShowNewCategory(false);}
-    }catch(error){setError(error instanceof Error?error.message:'No se pudo crear la categoría.');
+      else setFormError('No se pudo crear la categoría. Comprueba el mensaje y que no exista otra con el mismo nombre.');
+    }catch(error){reportError(error instanceof Error?error.message:'No se pudo crear la categoría.');
     }finally{setCategoryBusy(false);}
   };
 
@@ -419,7 +447,8 @@ function ProductModal({ businessId, product, categories, onAddCategory, onClose,
     <div className="form-two"><label>Precio normal<input required type="number" min="0.01" step="0.01" value={regular} onChange={(e)=>setRegular(e.target.value)} placeholder="0.00"/></label><label>Precio promocional<input type="number" min="0.01" step="0.01" value={promoPrice} onChange={(e)=>setPromoPrice(e.target.value)} placeholder="Sin promoción" disabled={!promo}/></label></div>
     <div className="setting-row"><span><strong>Promoción activa</strong><small>Usar el precio promocional hasta que la desactives.</small></span><button type="button" role="switch" aria-checked={promo} className={`switch ${promo?'checked':''}`} onClick={()=>setPromo(!promo)}><i/></button></div>
     <div className="setting-row"><span><strong>Producto activo</strong><small>Disponible en venta y catálogo público.</small></span><button type="button" role="switch" aria-checked={active} className={`switch ${active?'checked':''}`} onClick={()=>setActive(!active)}><i/></button></div>
-    <div className="modal-actions"><button type="button" className="button button-outline" onClick={onClose}>Cancelar</button><button className="button button-primary" disabled={saving}>{saving?'Guardando…':product?'Guardar cambios':'Agregar producto'}</button></div>
+    {formError&&<div className="notice product-form-notice" role="alert"><CircleHelp size={16}/><span>{formError}</span></div>}{saveStatus&&<p className="product-save-status" role="status">{saveStatus}</p>}
+    <div className="modal-actions"><button type="button" className="button button-outline" onClick={onClose}>Cerrar</button><button className="button button-primary" disabled={saving||saveTimedOut}>{saving?saveStatus:saveTimedOut?'Verifica Productos':product?'Guardar cambios':'Agregar producto'}</button></div>
   </form></div>;
 }
 
