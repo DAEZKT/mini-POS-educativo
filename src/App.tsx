@@ -410,7 +410,6 @@ function SalePage({ products, categories, currencySymbol, query, setQuery, cart,
   const itemCount=cart.reduce((count,row)=>count+row.quantity,0);
   const selectCategory=(categoryId:string)=>{setSelectedCategory(categoryId);setShowCategoryFilters(false);};
   return <div className="pos-page">
-    <div className="pos-page-heading"><PageHeading eyebrow="PUNTO DE VENTA" title="Nueva venta" description="Selecciona productos y confirma la venta." /></div>
     <div className="pos-mobile-tabs"><button className={mobilePanel==='catalog'?'active':''} onClick={()=>setMobilePanel('catalog')}><ShoppingBag size={15}/> Catálogo</button><button className={mobilePanel==='order'?'active':''} onClick={()=>setMobilePanel('order')}><ShoppingCart size={15}/> Tu venta{itemCount>0&&<span>{itemCount}</span>}</button></div>
     <div className="pos-layout">
       <section className={`pos-products ${mobilePanel==='order'?'mobile-hidden':''}`}>
