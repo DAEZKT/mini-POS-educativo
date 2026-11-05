@@ -15,6 +15,7 @@ export type Product = {
   business_id: string;
   name: string;
   description: string | null;
+  image_url: string | null;
   regular_price: number;
   is_active: boolean;
   promotion_enabled: boolean;

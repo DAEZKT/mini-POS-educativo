@@ -37,6 +37,10 @@ También puedes ejecutar el contenido desde el SQL Editor de Neon. Aplica esta m
 
 La migración instala las tablas de negocio, restricciones, RLS y funciones SQL usadas para consultar el catálogo público y confirmar una venta. Depende de la configuración de Neon Auth/Data API y de los roles y funciones que Neon expone en ese entorno; confirma esos requisitos con la migración y prueba su ejecución en una branch de desarrollo antes de producción.
 
+### Añadir imágenes de producto a una instalación existente
+
+Después de desplegar la versión que incluye imágenes, aplica una sola vez `database/migrations/202611040001_product_images.sql` en el SQL Editor de Neon, conectado a la misma branch configurada en Vercel. Esta migración agrega `products.image_url` y actualiza la función del catálogo público; no vuelvas a ejecutar la migración inicial.
+
 ## 3. Ejecutar localmente
 
 1. Instala Node.js 20 o posterior y npm.
@@ -81,6 +85,16 @@ No guardes datos reales en un entorno de prueba. Mantén `.env.local` fuera de G
 5. Añade el dominio de Vercel a los orígenes/dominios permitidos en Neon Auth.
 6. Vuelve a desplegar si cambiaste variables de entorno y comprueba registro, inicio de sesión y las funciones principales desde el dominio publicado.
 
+### Preparar imágenes de producto
+
+1. En el proyecto de Vercel, abre **Storage → Create Database → Blob** y crea un store con acceso **Public**. Las imágenes del catálogo deben poder leerse sin iniciar sesión.
+2. Conecta el store al proyecto y habilita Production y Preview si usarás ambos entornos. Vercel agregará `BLOB_READ_WRITE_TOKEN` automáticamente; mantenlo como secreto de servidor y no crees una variable `VITE_*` para ese token.
+3. Aplica `database/migrations/202611040001_product_images.sql` en Neon antes de publicar la nueva versión de la app.
+4. Despliega para que la función `/api/product-image-upload` quede activa con el token del store y la app pueda guardar `image_url`.
+5. No hace falta una variable nueva en Neon ni otra URL en Vercel. La subida valida la sesión contra Neon Data API; la base guarda la URL pública de cada archivo. Luego sube una imagen JPG, PNG o WebP de hasta 5 MB desde el formulario de producto.
+
+La subida desde `npm run dev` no incluye la función `/api` de Vercel. Para probar la subida usa un Preview desplegado en Vercel (o `vercel dev` con el proyecto vinculado y `BLOB_READ_WRITE_TOKEN` disponible). Los archivos son públicos por URL porque aparecen en catálogos compartibles. Vercel Blob puede generar cargos según almacenamiento, operaciones y tráfico; revisa el uso del store.
+
 `DATABASE_URL` sirve para tareas administrativas de PostgreSQL y migraciones. No la agregues como variable `VITE_*`, no la incluyas en el código cliente y no la subas al repositorio. El cliente web utiliza las URL de Auth y Data API; RLS y las funciones SQL controlan el acceso a los datos.
 
 ## 5. Primera configuración del negocio
@@ -106,6 +120,8 @@ No guardes datos reales en un entorno de prueba. Mantén `.env.local` fuera de G
 - Neon Auth y Neon Data API están habilitados para la branch usada.
 - La migración se probó y se aplicó a la base correcta.
 - Las dos URL configuradas en Vercel corresponden a la misma branch.
+- Existe un Vercel Blob store público conectado al proyecto y su `BLOB_READ_WRITE_TOKEN` está disponible para Production/Preview.
+- La migración de imágenes se aplicó a la misma branch de Neon usada por la app.
 - Neon Auth permite el dominio de producción.
 - RLS permanece habilitado y las políticas y funciones de la migración están presentes.
 - No hay contraseñas SQL, claves administrativas ni tokens secretos en Git o variables `VITE_*`.
