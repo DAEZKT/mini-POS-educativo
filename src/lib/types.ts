@@ -59,7 +59,7 @@ export const priceFor = (product: Product) =>
     : Number(product.regular_price);
 
 export const formatMoney = (amount: number, currencyCode = 'NIO') =>
-  new Intl.NumberFormat('es-NI', { style: 'currency', currency: currencyCode, maximumFractionDigits: 2 }).format(amount);
+  new Intl.NumberFormat('en-US', { style: 'currency', currency: currencyCode, maximumFractionDigits: 2 }).format(amount);
 
 export const formatDate = (value: string) => new Intl.DateTimeFormat('es-NI', {
   dateStyle: 'medium', timeStyle: 'short',
