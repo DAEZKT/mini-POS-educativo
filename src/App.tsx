@@ -3,7 +3,7 @@ import type { CSSProperties, ReactNode } from 'react';
 import { upload as uploadBlob } from '@vercel/blob/client';
 import {
   ArrowUpRight, BarChart3, Check, ChevronDown, CircleHelp, ClipboardList, ImagePlus,
-  ExternalLink, Eye, Facebook, Instagram, LayoutDashboard, LogOut, Menu,
+  ExternalLink, Eye, Facebook, Instagram, LogOut, Menu,
   Music2, Package, Plus, Printer, Search, Settings2, ShoppingBag, ShoppingCart,
   Sparkles, Store, Tag, X, Youtube,
 } from 'lucide-react';
@@ -13,8 +13,8 @@ import { Business, Category, formatDate, formatMoney, priceFor, Product, Sale } 
 type Page = 'dashboard' | 'products' | 'categories' | 'sale' | 'history' | 'brand';
 type CartRow = { product: Product; quantity: number };
 
-const navItems: { id: Page; label: string; icon: typeof LayoutDashboard }[] = [
-  { id: 'dashboard', label: 'Resumen', icon: LayoutDashboard },
+const navItems: { id: Page; label: string; icon: typeof BarChart3 }[] = [
+  { id: 'dashboard', label: 'Resumen', icon: BarChart3 },
   { id: 'products', label: 'Productos', icon: Package },
   { id: 'categories', label: 'Categorías', icon: Tag },
   { id: 'sale', label: 'Nueva venta', icon: ShoppingCart },
@@ -279,7 +279,7 @@ export default function App() {
   return <div className="app-shell">
     <aside className={`sidebar ${mobileNavOpen ? 'sidebar-open' : ''}`}><div className="sidebar-top"><a className="logo-lockup" href="#dashboard"><span className="brand-mark"><Store size={19} /></span><span>mini<span className="logo-light">pos</span><small>ESPACIO DE NEGOCIO</small></span></a><button className="icon-button mobile-close" onClick={() => setMobileNavOpen(false)} aria-label="Cerrar menú"><X size={19} /></button></div>
       <div className="side-business"><span className="business-avatar">{business?.name.slice(0, 1).toUpperCase() || 'M'}</span><span><strong>{business?.name || 'Mi negocio'}</strong><small>Plan emprendedor</small></span><ChevronDown size={15} /></div>
-      <div className="nav-caption">MENÚ PRINCIPAL</div><nav className="main-nav">{navItems.map(({ id, label, icon: Icon }) => <button key={id} className={`nav-link ${page === id ? 'selected' : ''}`} onClick={() => { setPage(id); setMobileNavOpen(false); }}><Icon size={18} /><span>{label}</span>{id === 'sale' && cart.length > 0 && <i>{cart.reduce((n, row) => n + row.quantity, 0)}</i>}</button>)}</nav>
+      <div className="nav-caption">MENÚ PRINCIPAL</div><nav className="main-nav">{navItems.map(({ id, label, icon: Icon }) => <button key={id} className={`nav-link ${page === id ? 'selected' : ''}`} onClick={() => { setPage(id); setMobileNavOpen(false); }}><span className="nav-icon"><Icon size={17} strokeWidth={1.9} /></span><span>{label}</span>{id === 'sale' && cart.length > 0 && <i>{cart.reduce((n, row) => n + row.quantity, 0)}</i>}</button>)}</nav>
       <div className="sidebar-bottom"><div className="help-card"><span><Sparkles size={17} /></span><strong>Un paso a la vez</strong><p>Tu negocio, organizado y listo para crecer.</p></div><button className="nav-link logout-link" onClick={() => neon?.auth.signOut()}><LogOut size={18} /><span>Cerrar sesión</span></button><small className="sidebar-version">MINI POS · EDICIÓN REGALO</small></div>
     </aside>
     {mobileNavOpen && <button className="nav-backdrop" onClick={() => setMobileNavOpen(false)} aria-label="Cerrar menú" />}
