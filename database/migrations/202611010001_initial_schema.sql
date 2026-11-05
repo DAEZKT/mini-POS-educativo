@@ -17,7 +17,7 @@ create table public.products (
   id uuid primary key default gen_random_uuid(),
   business_id uuid not null references public.businesses(id) on delete cascade,
   name text not null check (char_length(name) between 1 and 100),
-  description text check (description is null or char_length(description) <= 2000),
+  description text,
   regular_price numeric(12,2) not null check (regular_price > 0),
   is_active boolean not null default true,
   promotion_enabled boolean not null default false,
