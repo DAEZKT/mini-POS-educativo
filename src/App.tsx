@@ -52,6 +52,8 @@ function PublicCatalog() {
   const [business, setBusiness] = useState<Business | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
+  const [query, setQuery] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState('Todas');
   const slug = window.location.pathname.split('/').filter(Boolean).at(-1) || '';
   useEffect(() => {
     let active = true;
@@ -67,15 +69,24 @@ function PublicCatalog() {
 
   if (loading) return <div className="public-loading">Cargando catálogo…</div>;
   if (!business) return <div className="public-loading"><Store size={28} /><h1>Catálogo no disponible</h1><p>Revisa el enlace o contacta al negocio.</p></div>;
-  const groups = groupProducts(products, (product) => product.category_name);
+  const categoryNames = [...new Set(products.map((product) => product.category_name?.trim() || 'Sin categoría'))]
+    .sort((a, b) => a === 'Sin categoría' ? 1 : b === 'Sin categoría' ? -1 : a.localeCompare(b, 'es'));
+  const filteredProducts = products.filter((product) => {
+    const category = product.category_name?.trim() || 'Sin categoría';
+    const matchesCategory = selectedCategory === 'Todas' || category === selectedCategory;
+    const searchText = `${product.name} ${product.description || ''} ${category}`.toLocaleLowerCase('es');
+    return matchesCategory && searchText.includes(query.trim().toLocaleLowerCase('es'));
+  });
+  const groups = groupProducts(filteredProducts, (product) => product.category_name);
   return <main className="public-page" style={{ '--brand': business.primary_color, '--brand-soft': business.secondary_color } as CSSProperties}>
     <header className="public-header">
       <div className="public-brand"><span className="brand-mark"><Store size={19} /></span><div><strong>{business.name}</strong><small>Catálogo de productos</small></div></div>
       <button className="button button-outline no-print" onClick={() => window.print()}><Printer size={16} /> Imprimir catálogo</button>
     </header>
-    <section className="public-intro"><span className="eyebrow">CATÁLOGO DISPONIBLE</span><h1>Encuentra algo que te guste.</h1><p>Explora nuestros productos y precios.</p></section>
-    {groups.length === 0 ? <section className="public-grid"><div className="empty-state">Aún no hay productos publicados.</div></section> : groups.map((group) => <section className="public-category" key={group.name}><h2>{group.name}</h2><div className="public-grid">{group.products.map((product) => <article className="public-product" key={product.id}>
-      <div className="product-placeholder">{product.image_url ? <img src={product.image_url} alt={product.name} /> : <ShoppingBag size={26} />}</div><div className="public-product-info"><h2>{product.name}</h2><p>{product.description || ' '}</p><div className="price-line">{product.promotion_enabled && <s>{formatMoney(product.regular_price,business.currency_symbol)}</s>}<strong>{formatMoney(priceFor(product),business.currency_symbol)}</strong></div></div>
+    <section className="public-hero"><span className="public-hero-orb"/><div className="public-hero-copy"><span className="public-eyebrow"><span/> CATÁLOGO DISPONIBLE</span><h1>Encuentra algo<br/><em>que te encante.</em></h1><p>Explora los productos de {business.name} y descubre tu próximo favorito.</p><div className="public-hero-meta"><span><ShoppingBag size={15}/>{products.length} {products.length === 1 ? 'producto disponible' : 'productos disponibles'}</span>{business.address&&<span>{business.address}</span>}</div></div><div className="public-hero-mark"><Store size={42}/></div></section>
+    <section className="public-catalog-controls no-print"><div className="public-controls-heading"><div><span className="eyebrow">EXPLORA LA COLECCIÓN</span><h2>Nuestros productos</h2></div><span className="public-result-count">{filteredProducts.length} {filteredProducts.length===1?'resultado':'resultados'}</span></div><label className="public-search"><Search size={17}/><input type="search" value={query} onChange={(event)=>setQuery(event.target.value)} placeholder="Buscar productos…" aria-label="Buscar productos por nombre o descripción"/>{query&&<button type="button" onClick={()=>setQuery('')} aria-label="Limpiar búsqueda"><X size={15}/></button>}</label>{categoryNames.length>0&&<div className="public-filter-row"><span className="public-filter-label">Categorías</span><div className="public-filter-chips"><button className={`public-filter-chip ${selectedCategory==='Todas'?'active':''}`} onClick={()=>setSelectedCategory('Todas')}>Todas <small>{products.length}</small></button>{categoryNames.map((category)=>{const count=products.filter((product)=>(product.category_name?.trim()||'Sin categoría')===category).length;return <button key={category} className={`public-filter-chip ${selectedCategory===category?'active':''}`} onClick={()=>setSelectedCategory(category)}>{category}<small>{count}</small></button>;})}</div></div>}</section>
+    {groups.length === 0 ? <section className="public-empty"><span><Search size={24}/></span><h2>{products.length?'No encontramos productos':'Aún no hay productos publicados'}</h2><p>{products.length?'Prueba otra búsqueda o cambia la categoría seleccionada.':'Vuelve pronto para ver los productos de este negocio.'}</p>{(query||selectedCategory!=='Todas')&&<button className="button button-outline no-print" onClick={()=>{setQuery('');setSelectedCategory('Todas');}}>Ver todos los productos</button>}</section> : groups.map((group) => <section className="public-category" key={group.name}><div className="public-category-heading"><h2>{group.name}</h2><span>{group.products.length} {group.products.length===1?'artículo':'artículos'}</span></div><div className="public-grid">{group.products.map((product) => <article className="public-product" key={product.id}>
+      <div className="public-product-image">{product.image_url ? <img src={product.image_url} alt={product.name} loading="lazy" /> : <span className="public-image-placeholder"><ShoppingBag size={31}/></span>}{product.promotion_enabled&&<span className="public-promo-badge">Oferta</span>}</div><div className="public-product-info">{product.category_name&&<span className="public-product-category">{product.category_name}</span>}<h3>{product.name}</h3><p>{product.description || 'Un producto seleccionado para ti.'}</p><div className="price-line">{product.promotion_enabled && <s>{formatMoney(product.regular_price,business.currency_symbol)}</s>}<strong>{formatMoney(priceFor(product),business.currency_symbol)}</strong></div></div>
     </article>)}</div></section>)}
     <footer className="public-footer">{business.address && <span>{business.address}</span>}{business.phone && <a href={`tel:${business.phone}`}>{business.phone}</a>}<span>Catálogo creado con Mini POS</span></footer>
   </main>;
