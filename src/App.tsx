@@ -5,10 +5,11 @@ import {
   ArrowUpRight, BarChart3, Check, ChevronDown, CircleHelp, ClipboardList, ImagePlus,
   ExternalLink, Eye, Facebook, Instagram, LogOut, Menu,
   Music2, Package, Plus, Printer, Search, Settings2, ShoppingBag, ShoppingCart,
-  Sparkles, Store, Tag, X, Youtube,
+  Sparkles, Store, Tag, X, Youtube, FileText,
 } from 'lucide-react';
 import { isNeonConfigured, neon } from './lib/neon';
 import { Business, Category, formatDate, formatMoney, priceFor, Product, Sale } from './lib/types';
+import { buildReceiptPdf } from './lib/receipt-pdf';
 
 type Page = 'dashboard' | 'products' | 'categories' | 'sale' | 'history' | 'brand';
 type CartRow = { product: Product; quantity: number };
@@ -534,5 +535,13 @@ function ProductModal({ businessId, product, categories, onAddCategory, onClose,
 function ReceiptModal({ sale, business, onClose }: { sale:Sale; business:Business; onClose:()=>void }) {
   const items=sale.sale_items||[];
   const currencySymbol=business.currency_symbol||'C$';
-  return <div className="modal-backdrop" onMouseDown={(e)=>e.target===e.currentTarget&&onClose()}><div className="modal-card receipt-modal"><div className="modal-heading no-print"><div><span className="eyebrow">COMPROBANTE DE VENTA</span><h2>Venta #{String(sale.sale_number).padStart(5,'0')}</h2></div><button className="icon-button" onClick={onClose}><X size={19}/></button></div><div className="receipt-paper" id="print-receipt"><div className="receipt-brand"><span className="brand-mark"><Store size={17}/></span><strong>{business.name}</strong>{business.address&&<small>{business.address}</small>}{business.phone&&<small>{business.phone}</small>}</div><div className="receipt-meta"><span>Comprobante #{String(sale.sale_number).padStart(5,'0')}</span><span>{formatDate(sale.sold_at)}</span></div><div className="receipt-lines">{items.map((item)=><div className="receipt-line" key={item.id}><span>{item.quantity} × {item.product_name}{item.promotion_applied&&<small>Promoción aplicada</small>}</span><strong>{formatMoney(Number(item.line_total),currencySymbol)}</strong></div>)}</div><div className="receipt-total"><span>Total</span><strong>{formatMoney(Number(sale.total_amount),currencySymbol)}</strong></div><p className="receipt-thanks">¡Gracias por tu compra!</p></div><div className="modal-actions no-print"><button className="button button-outline" onClick={onClose}>Cerrar</button><button className="button button-primary" onClick={()=>window.print()}><Printer size={15}/> Imprimir / Guardar PDF</button></div></div></div>;
+  const openPdf=()=>{
+    const pdf=new Blob([buildReceiptPdf(sale,business)],{type:'application/pdf'});
+    const url=URL.createObjectURL(pdf);
+    const tab=window.open(url,'_blank');
+    if(tab)tab.opener=null;
+    else{const link=document.createElement('a');link.href=url;link.download=`comprobante-${String(sale.sale_number).padStart(5,'0')}.pdf`;link.click();}
+    window.setTimeout(()=>URL.revokeObjectURL(url),120000);
+  };
+  return <div className="modal-backdrop" onMouseDown={(e)=>e.target===e.currentTarget&&onClose()}><div className="modal-card receipt-modal"><div className="modal-heading no-print"><div><span className="eyebrow">COMPROBANTE DE VENTA</span><h2>Venta #{String(sale.sale_number).padStart(5,'0')}</h2></div><button className="icon-button" onClick={onClose}><X size={19}/></button></div><div className="receipt-paper" id="print-receipt"><div className="receipt-brand"><span className="brand-mark"><Store size={17}/></span><strong>{business.name}</strong>{business.address&&<small>{business.address}</small>}{business.phone&&<small>{business.phone}</small>}</div><div className="receipt-meta"><span>Comprobante #{String(sale.sale_number).padStart(5,'0')}</span><span>{formatDate(sale.sold_at)}</span></div><div className="receipt-lines">{items.map((item)=><div className="receipt-line" key={item.id}><span>{item.quantity} × {item.product_name}{item.promotion_applied&&<small>Promoción aplicada</small>}</span><strong>{formatMoney(Number(item.line_total),currencySymbol)}</strong></div>)}</div><div className="receipt-total"><span>Total</span><strong>{formatMoney(Number(sale.total_amount),currencySymbol)}</strong></div><p className="receipt-thanks">¡Gracias por tu compra!</p></div><div className="modal-actions receipt-actions no-print"><button className="button button-outline" onClick={onClose}>Cerrar</button><button className="button button-primary" onClick={openPdf}><FileText size={15}/> Abrir PDF</button></div></div></div>;
 }
