@@ -409,7 +409,7 @@ function ProductModal({ businessId, product, categories, onAddCategory, onClose,
       setSaveStatus('Guardando producto en Neon…');
       const payload={business_id:businessId,category_id:categoryId||null,name:name.trim(),description:description.trim()||null,image_url:nextImageUrl||null,regular_price:regularNumber,promotional_price:promoPrice?promoNumber:null,promotion_enabled:promo,is_active:active};
       const request=product?neon.from('products').update(payload).eq('id',product.id):neon.from('products').insert(payload);
-      const result=await withTimeout(request,25000);
+      const result=await withTimeout(request,10000);
       if(result.error)throw new Error(result.error.message);
       await onSaved();
     }catch(error){
@@ -440,6 +440,7 @@ function ProductModal({ businessId, product, categories, onAddCategory, onClose,
 
   return <div className="modal-backdrop" onMouseDown={(e)=>e.target===e.currentTarget&&onClose()}><form className="modal-card product-modal" onSubmit={save}>
     <div className="modal-heading"><div><span className="eyebrow">{product?'ACTUALIZAR':'NUEVO'} PRODUCTO</span><h2>{product?'Editar producto':'Agrega un producto'}</h2></div><button type="button" className="icon-button" onClick={onClose}><X size={19}/></button></div>
+    {formError&&<div className="notice product-form-notice" role="alert"><CircleHelp size={16}/><span>{formError}</span></div>}{saveStatus&&<p className="product-save-status" role="status">{saveStatus}</p>}
     <label>Nombre del producto<input required autoFocus maxLength={100} value={name} onChange={(e)=>setName(e.target.value)} placeholder="Ej. Blusa de lino"/></label>
     <label>Descripción <span className="optional">OPCIONAL</span><textarea rows={2} maxLength={300} value={description} onChange={(e)=>setDescription(e.target.value)} placeholder="Detalles que quieras compartir"/></label>
     <div className="product-category-field"><label>Categoría<select value={categoryId} onChange={(e)=>setCategoryId(e.target.value)}><option value="">Sin categoría</option>{categories.map((category)=><option key={category.id} value={category.id}>{category.name}</option>)}</select></label><button type="button" className="text-link quick-category-toggle" onClick={()=>setShowNewCategory((shown)=>!shown)}><Plus size={14}/> Crear categoría</button>{showNewCategory&&<div className="quick-category-form"><input autoFocus maxLength={60} value={newCategoryName} onChange={(e)=>setNewCategoryName(e.target.value)} onKeyDown={(e)=>{if(e.key==='Enter'){e.preventDefault();void createCategory();}}} placeholder="Nombre de categoría"/><button type="button" className="button button-small button-primary" disabled={categoryBusy||!newCategoryName.trim()} onClick={()=>void createCategory()}>{categoryBusy?'Creando…':'Crear'}</button></div>}</div>
@@ -447,7 +448,6 @@ function ProductModal({ businessId, product, categories, onAddCategory, onClose,
     <div className="form-two"><label>Precio normal<input required type="number" min="0.01" step="0.01" value={regular} onChange={(e)=>setRegular(e.target.value)} placeholder="0.00"/></label><label>Precio promocional<input type="number" min="0.01" step="0.01" value={promoPrice} onChange={(e)=>setPromoPrice(e.target.value)} placeholder="Sin promoción" disabled={!promo}/></label></div>
     <div className="setting-row"><span><strong>Promoción activa</strong><small>Usar el precio promocional hasta que la desactives.</small></span><button type="button" role="switch" aria-checked={promo} className={`switch ${promo?'checked':''}`} onClick={()=>setPromo(!promo)}><i/></button></div>
     <div className="setting-row"><span><strong>Producto activo</strong><small>Disponible en venta y catálogo público.</small></span><button type="button" role="switch" aria-checked={active} className={`switch ${active?'checked':''}`} onClick={()=>setActive(!active)}><i/></button></div>
-    {formError&&<div className="notice product-form-notice" role="alert"><CircleHelp size={16}/><span>{formError}</span></div>}{saveStatus&&<p className="product-save-status" role="status">{saveStatus}</p>}
     <div className="modal-actions"><button type="button" className="button button-outline" onClick={onClose}>Cerrar</button><button className="button button-primary" disabled={saving||saveTimedOut}>{saving?saveStatus:saveTimedOut?'Verifica Productos':product?'Guardar cambios':'Agregar producto'}</button></div>
   </form></div>;
 }
