@@ -13,6 +13,8 @@ export type Business = {
 export type Product = {
   id: string;
   business_id: string;
+  category_id: string | null;
+  category_name?: string | null;
   name: string;
   description: string | null;
   image_url: string | null;
@@ -20,6 +22,13 @@ export type Product = {
   is_active: boolean;
   promotion_enabled: boolean;
   promotional_price: number | null;
+  created_at: string;
+};
+
+export type Category = {
+  id: string;
+  business_id: string;
+  name: string;
   created_at: string;
 };
 

@@ -41,6 +41,8 @@ La migración instala las tablas de negocio, restricciones, RLS y funciones SQL 
 
 Después de desplegar la versión que incluye imágenes, aplica una sola vez `database/migrations/202611040001_product_images.sql` en el SQL Editor de Neon, conectado a la misma branch configurada en Vercel. Esta migración agrega `products.image_url` y actualiza la función del catálogo público; no vuelvas a ejecutar la migración inicial.
 
+Para habilitar categorías, aplica después `database/migrations/202611040002_product_categories.sql` una sola vez en esa misma branch. Crea las categorías por negocio, agrega la relación opcional desde productos y actualiza el catálogo público para devolver el nombre de categoría. Si preparas una instalación nueva, aplica las migraciones en orden: inicial, imágenes y categorías.
+
 ## 3. Ejecutar localmente
 
 1. Instala Node.js 20 o posterior y npm.

@@ -8,14 +8,15 @@ import {
   Sparkles, Store, Tag, X, Youtube,
 } from 'lucide-react';
 import { isNeonConfigured, neon } from './lib/neon';
-import { Business, formatDate, formatMoney, priceFor, Product, Sale } from './lib/types';
+import { Business, Category, formatDate, formatMoney, priceFor, Product, Sale } from './lib/types';
 
-type Page = 'dashboard' | 'products' | 'sale' | 'history' | 'brand';
+type Page = 'dashboard' | 'products' | 'categories' | 'sale' | 'history' | 'brand';
 type CartRow = { product: Product; quantity: number };
 
 const navItems: { id: Page; label: string; icon: typeof LayoutDashboard }[] = [
   { id: 'dashboard', label: 'Resumen', icon: LayoutDashboard },
   { id: 'products', label: 'Productos', icon: Package },
+  { id: 'categories', label: 'Categorías', icon: Tag },
   { id: 'sale', label: 'Nueva venta', icon: ShoppingCart },
   { id: 'history', label: 'Ventas', icon: ClipboardList },
   { id: 'brand', label: 'Mi negocio', icon: Settings2 },
@@ -24,6 +25,17 @@ const navItems: { id: Page; label: string; icon: typeof LayoutDashboard }[] = [
 function slugify(value: string) {
   return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
     .replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+}
+
+function groupProducts(products: Product[], getCategoryName: (product: Product) => string | null | undefined) {
+  const groups = new Map<string, { name: string; products: Product[] }>();
+  products.forEach((product) => {
+    const name = getCategoryName(product)?.trim() || 'Sin categoría';
+    const group = groups.get(name) || { name, products: [] };
+    group.products.push(product);
+    groups.set(name, group);
+  });
+  return [...groups.values()].sort((a, b) => a.name === 'Sin categoría' ? 1 : b.name === 'Sin categoría' ? -1 : a.name.localeCompare(b.name, 'es'));
 }
 
 function PublicCatalog() {
@@ -45,17 +57,16 @@ function PublicCatalog() {
 
   if (loading) return <div className="public-loading">Cargando catálogo…</div>;
   if (!business) return <div className="public-loading"><Store size={28} /><h1>Catálogo no disponible</h1><p>Revisa el enlace o contacta al negocio.</p></div>;
+  const groups = groupProducts(products, (product) => product.category_name);
   return <main className="public-page" style={{ '--brand': business.primary_color, '--brand-soft': business.secondary_color } as CSSProperties}>
     <header className="public-header">
       <div className="public-brand"><span className="brand-mark"><Store size={19} /></span><div><strong>{business.name}</strong><small>Catálogo de productos</small></div></div>
       <button className="button button-outline no-print" onClick={() => window.print()}><Printer size={16} /> Imprimir catálogo</button>
     </header>
     <section className="public-intro"><span className="eyebrow">CATÁLOGO DISPONIBLE</span><h1>Encuentra algo que te guste.</h1><p>Explora nuestros productos y precios.</p></section>
-    <section className="public-grid">
-      {products.length === 0 ? <div className="empty-state">Aún no hay productos publicados.</div> : products.map((product) => <article className="public-product" key={product.id}>
-        <div className="product-placeholder">{product.image_url ? <img src={product.image_url} alt={product.name} /> : <ShoppingBag size={26} />}</div><div className="public-product-info"><h2>{product.name}</h2><p>{product.description || ' '}</p><div className="price-line">{product.promotion_enabled && <s>{formatMoney(product.regular_price)}</s>}<strong>{formatMoney(priceFor(product))}</strong></div></div>
-      </article>)}
-    </section>
+    {groups.length === 0 ? <section className="public-grid"><div className="empty-state">Aún no hay productos publicados.</div></section> : groups.map((group) => <section className="public-category" key={group.name}><h2>{group.name}</h2><div className="public-grid">{group.products.map((product) => <article className="public-product" key={product.id}>
+      <div className="product-placeholder">{product.image_url ? <img src={product.image_url} alt={product.name} /> : <ShoppingBag size={26} />}</div><div className="public-product-info"><h2>{product.name}</h2><p>{product.description || ' '}</p><div className="price-line">{product.promotion_enabled && <s>{formatMoney(product.regular_price)}</s>}<strong>{formatMoney(priceFor(product))}</strong></div></div>
+    </article>)}</div></section>)}
     <footer className="public-footer">{business.address && <span>{business.address}</span>}{business.phone && <a href={`tel:${business.phone}`}>{business.phone}</a>}<span>Catálogo creado con Mini POS</span></footer>
   </main>;
 }
@@ -139,6 +150,7 @@ export default function App() {
   const [userId, setUserId] = useState<string | null>(null);
   const [authReady, setAuthReady] = useState(false);
   const [business, setBusiness] = useState<Business | null>(null);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [sales, setSales] = useState<Sale[]>([]);
   const [page, setPage] = useState<Page>('dashboard');
@@ -173,15 +185,16 @@ export default function App() {
       shop = created;
     }
     setBusiness(shop as Business);
-    const [{ data: productRows, error: productError }, { data: saleRows, error: saleError }] = await Promise.all([
+    const [{ data: productRows, error: productError }, { data: saleRows, error: saleError }, { data: categoryRows, error: categoryError }] = await Promise.all([
       neon.from('products').select('*').eq('business_id', shop.id).order('created_at', { ascending: false }),
       neon.from('sales').select('*, sale_items(*)').eq('business_id', shop.id).order('sold_at', { ascending: false }),
+      neon.from('categories').select('*').eq('business_id', shop.id).order('name'),
     ]);
-    if (productError || saleError) setError(productError?.message || saleError?.message || 'No se pudieron cargar los datos.');
-    setProducts((productRows || []) as Product[]); setSales((saleRows || []) as Sale[]); setLoading(false);
+    if (productError || saleError || categoryError) setError(productError?.message || saleError?.message || categoryError?.message || 'No se pudieron cargar los datos.');
+    setProducts((productRows || []) as Product[]); setSales((saleRows || []) as Sale[]); setCategories((categoryRows || []) as Category[]); setLoading(false);
   }, [userId]);
 
-  useEffect(() => { if (userId) void loadWorkspace(); else { setBusiness(null); setProducts([]); setSales([]); } }, [userId, loadWorkspace]);
+  useEffect(() => { if (userId) void loadWorkspace(); else { setBusiness(null); setProducts([]); setCategories([]); setSales([]); } }, [userId, loadWorkspace]);
   useEffect(() => { if (toast) { const timer = window.setTimeout(() => setToast(''), 3200); return () => window.clearTimeout(timer); } }, [toast]);
   useEffect(() => { if (business) { document.documentElement.style.setProperty('--brand', business.primary_color); document.documentElement.style.setProperty('--brand-soft', business.secondary_color); } }, [business]);
 
@@ -201,6 +214,30 @@ export default function App() {
   if (!userId) return <AuthScreen onAuthenticated={setUserId} />;
 
   const showToast = (message: string) => setToast(message);
+  const addCategory = async (name: string): Promise<Category | null> => {
+    if (!neon || !business) return null;
+    const { data, error: categoryError } = await neon.from('categories').insert({ business_id: business.id, name: name.trim() }).select().single();
+    if (categoryError) { setError(categoryError.message); return null; }
+    const created = data as Category;
+    setCategories((items) => [...items, created].sort((a, b) => a.name.localeCompare(b.name, 'es')));
+    showToast('Categoría creada.');
+    return created;
+  };
+  const renameCategory = async (id: string, name: string) => {
+    if (!neon) return;
+    const { error: categoryError } = await neon.from('categories').update({ name: name.trim() }).eq('id', id);
+    if (categoryError) { setError(categoryError.message); return; }
+    setCategories((items) => items.map((item) => item.id === id ? { ...item, name: name.trim() } : item).sort((a, b) => a.name.localeCompare(b.name, 'es')));
+    showToast('Categoría actualizada.');
+  };
+  const deleteCategory = async (id: string) => {
+    if (!neon) return;
+    const { error: categoryError } = await neon.from('categories').delete().eq('id', id);
+    if (categoryError) { setError(categoryError.message); return; }
+    setCategories((items) => items.filter((item) => item.id !== id));
+    await loadWorkspace();
+    showToast('Categoría eliminada. Los productos quedaron sin categoría.');
+  };
   const addToCart = (product: Product) => setCart((items) => {
     const existing = items.find((row) => row.product.id === product.id);
     return existing ? items.map((row) => row.product.id === product.id ? { ...row, quantity: row.quantity + 1 } : row) : [...items, { product, quantity: 1 }];
@@ -230,17 +267,18 @@ export default function App() {
         {error && <div className="notice page-notice"><CircleHelp size={17} /><span>{error}</span><button onClick={() => setError('')}><X size={16} /></button></div>}
         {loading && <div className="loading-strip"><span /> Sincronizando información…</div>}
         {page === 'dashboard' && <Dashboard business={business} sales={periodSales} total={totalRevenue} products={products} bestSellers={bestSellers} barMax={barMax} period={period} setPeriod={setPeriod} />}
-        {page === 'products' && <ProductsPage products={filteredProducts} query={query} setQuery={setQuery} onAdd={() => { setEditingProduct(null); setProductModal(true); }} onEdit={(p) => { setEditingProduct(p); setProductModal(true); }} onToggle={async (product) => {
+        {page === 'products' && <ProductsPage products={filteredProducts} categories={categories} query={query} setQuery={setQuery} onAdd={() => { setEditingProduct(null); setProductModal(true); }} onEdit={(p) => { setEditingProduct(p); setProductModal(true); }} onToggle={async (product) => {
           if (!neon) return;
           const { error: e } = await neon.from('products').update({ is_active: !product.is_active }).eq('id', product.id);
           if (e) setError(e.message); else { await loadWorkspace(); showToast(product.is_active ? 'Producto desactivado.' : 'Producto activado.'); }
         }} />}
-        {page === 'sale' && <SalePage products={filteredActive} query={query} setQuery={setQuery} cart={cart} addToCart={addToCart} changeQuantity={changeQuantity} total={cartTotal} onFinalize={finalizeSale} />}
+        {page === 'categories' && <CategoriesPage categories={categories} onAdd={addCategory} onRename={renameCategory} onDelete={deleteCategory} />}
+        {page === 'sale' && <SalePage products={filteredActive} categories={categories} query={query} setQuery={setQuery} cart={cart} addToCart={addToCart} changeQuantity={changeQuantity} total={cartTotal} onFinalize={finalizeSale} />}
         {page === 'history' && <HistoryPage sales={sales} onReceipt={setReceipt} />}
         {page === 'brand' && business && <BrandPage business={business} onSaved={(b) => { setBusiness(b); showToast('La marca del negocio se guardó.'); }} setError={setError} />}
       </div>
     </main>
-    {productModal && business && <ProductModal businessId={business.id} product={editingProduct} onClose={() => setProductModal(false)} onSaved={async () => { setProductModal(false); await loadWorkspace(); showToast(editingProduct ? 'Producto actualizado.' : 'Producto agregado.'); }} setError={setError} />}
+    {productModal && business && <ProductModal businessId={business.id} product={editingProduct} categories={categories} onAddCategory={addCategory} onClose={() => setProductModal(false)} onSaved={async () => { setProductModal(false); await loadWorkspace(); showToast(editingProduct ? 'Producto actualizado.' : 'Producto agregado.'); }} setError={setError} />}
     {receipt && business && <ReceiptModal sale={receipt} business={business} onClose={() => setReceipt(null)} />}
     {toast && <div className="toast"><span><Check size={15} /></span>{toast}</div>}
   </div>;
@@ -264,16 +302,30 @@ function StatCard({ label, value, icon: Icon, hint, trend }: { label: string; va
   return <article className="stat-card"><div className="stat-card-top"><span>{label}</span><span className="stat-icon"><Icon size={18} /></span></div><strong className="stat-value">{value}</strong><div className="stat-foot"><span>{hint}</span>{trend && <span className={`trend ${trend.startsWith('-')?'negative':''}`}><ArrowUpRight size={13} />{trend}</span>}</div></article>;
 }
 
-function ProductsPage({ products, query, setQuery, onAdd, onEdit, onToggle }: { products: Product[]; query:string; setQuery:(v:string)=>void; onAdd:()=>void; onEdit:(p:Product)=>void; onToggle:(p:Product)=>void }) {
+function ProductsPage({ products, categories, query, setQuery, onAdd, onEdit, onToggle }: { products: Product[]; categories: Category[]; query:string; setQuery:(v:string)=>void; onAdd:()=>void; onEdit:(p:Product)=>void; onToggle:(p:Product)=>void }) {
+  const categoryNames = new Map(categories.map((category) => [category.id, category.name]));
   return <><PageHeading eyebrow="TU CATÁLOGO" title="Productos" description="Organiza lo que vendes y mantén tus precios al día." action={<button className="button button-primary" onClick={onAdd}><Plus size={16} /> Agregar producto</button>} />
     <section className="panel table-panel"><div className="table-toolbar"><div className="search-box"><Search size={16} /><input placeholder="Buscar producto…" value={query} onChange={(e)=>setQuery(e.target.value)} /></div><span className="item-count">{products.length} productos</span></div>
-    {products.length ? <div className="table-scroll"><table><thead><tr><th>PRODUCTO</th><th>PRECIO</th><th>PROMOCIÓN</th><th>ESTADO</th><th></th></tr></thead><tbody>{products.map((p)=> <tr key={p.id}><td><div className="table-product"><span className="product-mini">{p.image_url ? <img src={p.image_url} alt="" /> : <ShoppingBag size={16}/>}</span><span><strong>{p.name}</strong><small>{p.description || 'Sin descripción'}</small></span></div></td><td><div className="price-cell">{p.promotion_enabled && <s>{formatMoney(p.regular_price)}</s>}<strong>{formatMoney(priceFor(p))}</strong></div></td><td>{p.promotion_enabled ? <span className="status-pill promo"><Tag size={13}/> Activa</span> : <span className="subtle-text">Sin promoción</span>}</td><td><button className={`status-toggle ${p.is_active?'on':''}`} onClick={()=>onToggle(p)}><i />{p.is_active?'Activo':'Inactivo'}</button></td><td><button className="icon-button table-edit" onClick={()=>onEdit(p)} aria-label={`Editar ${p.name}`}><Settings2 size={16}/></button></td></tr>)}</tbody></table></div> : <div className="empty-state"><span className="empty-icon"><Package size={24}/></span><strong>{query?'No encontramos ese producto':'Tu catálogo empieza aquí'}</strong><p>{query?'Prueba con otro nombre.':'Agrega tus productos y configura el precio que quieres ofrecer.'}</p>{!query && <button className="button button-primary" onClick={onAdd}><Plus size={15}/> Agregar primer producto</button>}</div>}</section>
+    {products.length ? <div className="table-scroll"><table><thead><tr><th>PRODUCTO</th><th>CATEGORÍA</th><th>PRECIO</th><th>PROMOCIÓN</th><th>ESTADO</th><th></th></tr></thead><tbody>{products.map((p)=> <tr key={p.id}><td><div className="table-product"><span className="product-mini">{p.image_url ? <img src={p.image_url} alt="" /> : <ShoppingBag size={16}/>}</span><span><strong>{p.name}</strong><small>{p.description || 'Sin descripción'}</small></span></div></td><td>{(p.category_id && categoryNames.get(p.category_id)) || <span className="subtle-text">Sin categoría</span>}</td><td><div className="price-cell">{p.promotion_enabled && <s>{formatMoney(p.regular_price)}</s>}<strong>{formatMoney(priceFor(p))}</strong></div></td><td>{p.promotion_enabled ? <span className="status-pill promo"><Tag size={13}/> Activa</span> : <span className="subtle-text">Sin promoción</span>}</td><td><button className={`status-toggle ${p.is_active?'on':''}`} onClick={()=>onToggle(p)}><i />{p.is_active?'Activo':'Inactivo'}</button></td><td><button className="icon-button table-edit" onClick={()=>onEdit(p)} aria-label={`Editar ${p.name}`}><Settings2 size={16}/></button></td></tr>)}</tbody></table></div> : <div className="empty-state"><span className="empty-icon"><Package size={24}/></span><strong>{query?'No encontramos ese producto':'Tu catálogo empieza aquí'}</strong><p>{query?'Prueba con otro nombre.':'Agrega tus productos y configura el precio que quieres ofrecer.'}</p>{!query && <button className="button button-primary" onClick={onAdd}><Plus size={15}/> Agregar primer producto</button>}</div>}</section>
   </>;
 }
 
-function SalePage({ products, query, setQuery, cart, addToCart, changeQuantity, total, onFinalize }: { products:Product[]; query:string; setQuery:(v:string)=>void; cart:CartRow[]; addToCart:(p:Product)=>void; changeQuantity:(id:string,d:number)=>void; total:number; onFinalize:()=>void }) {
+function CategoriesPage({ categories, onAdd, onRename, onDelete }: { categories: Category[]; onAdd:(name:string)=>Promise<Category|null>; onRename:(id:string,name:string)=>Promise<void>; onDelete:(id:string)=>Promise<void> }) {
+  const [name,setName]=useState('');const [editId,setEditId]=useState<string|null>(null);const [editName,setEditName]=useState('');const [busy,setBusy]=useState(false);
+  const add=async(e:FormEvent)=>{e.preventDefault();if(!name.trim())return;setBusy(true);const created=await onAdd(name);if(created)setName('');setBusy(false);};
+  const rename=async(e:FormEvent)=>{e.preventDefault();if(!editId||!editName.trim())return;setBusy(true);await onRename(editId,editName);setEditId(null);setBusy(false);};
+  const remove=async(id:string)=>{if(window.confirm('¿Eliminar esta categoría? Los productos se conservarán sin categoría.')){setBusy(true);await onDelete(id);setBusy(false);}};
+  return <><PageHeading eyebrow="ORGANIZA TU CATÁLOGO" title="Categorías" description="Agrupa productos para que sea más fácil encontrarlos y explorarlos." />
+    <div className="category-layout"><form className="panel category-form" onSubmit={add}><div className="panel-heading"><div><h2>Nueva categoría</h2><p>Ejemplos: Ropa, Accesorios, Bebidas.</p></div><span className="icon-surface"><Tag size={16}/></span></div><label>Nombre de la categoría<input required maxLength={60} value={name} onChange={(e)=>setName(e.target.value)} placeholder="Ej. Accesorios"/></label><button className="button button-primary" disabled={busy}><Plus size={15}/>{busy?'Guardando…':'Agregar categoría'}</button></form>
+    <section className="panel category-list"><div className="panel-heading"><div><h2>Tus categorías</h2><p>{categories.length} categorías creadas</p></div></div>{categories.length?categories.map((category)=><div className="category-row" key={category.id}>{editId===category.id?<form className="category-edit-form" onSubmit={rename}><input autoFocus required maxLength={60} value={editName} onChange={(e)=>setEditName(e.target.value)}/><button className="button button-small button-primary" disabled={busy}>Guardar</button><button type="button" className="button button-small button-outline" onClick={()=>setEditId(null)}>Cancelar</button></form>:<><span className="category-chip"><Tag size={14}/>{category.name}</span><span className="category-row-actions"><button className="button button-small button-outline" onClick={()=>{setEditId(category.id);setEditName(category.name);}}>Editar</button><button className="button button-small button-outline" disabled={busy} onClick={()=>void remove(category.id)}>Eliminar</button></span></>}</div>):<div className="empty-state"><strong>Aún no hay categorías</strong><p>Crea una categoría aquí o desde el formulario de un producto.</p></div>}</section></div>
+  </>;
+}
+
+function SalePage({ products, categories, query, setQuery, cart, addToCart, changeQuantity, total, onFinalize }: { products:Product[]; categories:Category[]; query:string; setQuery:(v:string)=>void; cart:CartRow[]; addToCart:(p:Product)=>void; changeQuantity:(id:string,d:number)=>void; total:number; onFinalize:()=>void }) {
+  const categoryNames = new Map(categories.map((category) => [category.id, category.name]));
+  const groups = groupProducts(products, (product) => product.category_id ? categoryNames.get(product.category_id) : undefined);
   return <><PageHeading eyebrow="PUNTO DE VENTA" title="Nueva venta" description="Selecciona productos y confirma la venta." />
-    <div className="pos-layout"><section className="pos-products"><div className="search-box product-search"><Search size={16}/><input placeholder="Buscar productos activos…" value={query} onChange={(e)=>setQuery(e.target.value)}/></div><div className="pos-product-grid">{products.map((p)=> <button key={p.id} className="pos-product-card" onClick={()=>addToCart(p)}><span className="product-placeholder">{p.image_url ? <img src={p.image_url} alt={p.name} /> : <ShoppingBag size={23}/>}</span><span className="pos-product-info"><strong>{p.name}</strong>{p.promotion_enabled&&<s>{formatMoney(p.regular_price)}</s>}<b>{formatMoney(priceFor(p))}</b></span><span className="add-circle"><Plus size={16}/></span></button>)}</div>{!products.length&&<div className="empty-state"><span className="empty-icon"><Package size={23}/></span><strong>No hay productos activos</strong><p>Activa productos para que aparezcan aquí.</p></div>}</section>
+    <div className="pos-layout"><section className="pos-products"><div className="search-box product-search"><Search size={16}/><input placeholder="Buscar productos activos…" value={query} onChange={(e)=>setQuery(e.target.value)}/></div>{groups.map((group)=><section className="pos-category" key={group.name}><h2>{group.name}</h2><div className="pos-product-grid">{group.products.map((p)=> <button key={p.id} className="pos-product-card" onClick={()=>addToCart(p)}><span className="product-placeholder">{p.image_url ? <img src={p.image_url} alt={p.name} /> : <ShoppingBag size={23}/>}</span><span className="pos-product-info"><strong>{p.name}</strong>{p.promotion_enabled&&<s>{formatMoney(p.regular_price)}</s>}<b>{formatMoney(priceFor(p))}</b></span><span className="add-circle"><Plus size={16}/></span></button>)}</div></section>)}{!products.length&&<div className="empty-state"><span className="empty-icon"><Package size={23}/></span><strong>No hay productos activos</strong><p>Activa productos para que aparezcan aquí.</p></div>}</section>
       <aside className="cart-panel"><div className="cart-heading"><span className="cart-icon"><ShoppingCart size={18}/></span><div><h2>Tu venta</h2><p>{cart.reduce((n,row)=>n+row.quantity,0)} artículos</p></div><span className="cart-count">{cart.length}</span></div><div className="cart-items">{cart.map(({product,quantity})=><div className="cart-row" key={product.id}><div className="cart-product"><strong>{product.name}</strong><small>{formatMoney(priceFor(product))} c/u</small></div><div className="quantity-control"><button onClick={()=>changeQuantity(product.id,-1)} aria-label="Restar una unidad">−</button><span>{quantity}</span><button onClick={()=>changeQuantity(product.id,1)} aria-label="Agregar una unidad">+</button></div><strong className="cart-line-total">{formatMoney(priceFor(product)*quantity)}</strong></div>)}{!cart.length&&<div className="cart-empty"><span><ShoppingCart size={23}/></span><strong>Tu venta está vacía</strong><small>Selecciona productos para comenzar.</small></div>}</div><div className="cart-summary"><div><span>Subtotal</span><span>{formatMoney(total)}</span></div><div className="cart-total"><strong>Total</strong><strong>{formatMoney(total)}</strong></div><button disabled={!cart.length} className="button button-primary button-full" onClick={onFinalize}>Confirmar venta <ArrowUpRight size={16}/></button><small><Check size={13}/> Los precios se guardan al confirmar</small></div></aside></div>
   </>;
 }
@@ -296,13 +348,17 @@ function BrandPage({ business, onSaved, setError }: { business:Business; onSaved
   </>;
 }
 
-function ProductModal({ businessId, product, onClose, onSaved, setError }: { businessId:string; product:Product|null; onClose:()=>void; onSaved:()=>void; setError:(v:string)=>void }) {
+function ProductModal({ businessId, product, categories, onAddCategory, onClose, onSaved, setError }: { businessId:string; product:Product|null; categories:Category[]; onAddCategory:(name:string)=>Promise<Category|null>; onClose:()=>void; onSaved:()=>void; setError:(v:string)=>void }) {
   const [name,setName]=useState(product?.name||'');
   const [description,setDescription]=useState(product?.description||'');
   const [regular,setRegular]=useState(product?String(product.regular_price):'');
   const [promoPrice,setPromoPrice]=useState(product?.promotional_price?String(product.promotional_price):'');
   const [active,setActive]=useState(product?.is_active??true);
   const [promo,setPromo]=useState(product?.promotion_enabled??false);
+  const [categoryId,setCategoryId]=useState(product?.category_id||'');
+  const [newCategoryName,setNewCategoryName]=useState('');
+  const [showNewCategory,setShowNewCategory]=useState(false);
+  const [categoryBusy,setCategoryBusy]=useState(false);
   const [imageUrl,setImageUrl]=useState(product?.image_url||'');
   const [imageFile,setImageFile]=useState<File|null>(null);
   const [imagePreview,setImagePreview]=useState(product?.image_url||'');
@@ -330,7 +386,7 @@ function ProductModal({ businessId, product, onClose, onSaved, setError }: { bus
         });
         nextImageUrl=blob.url;
       }
-      const payload={business_id:businessId,name:name.trim(),description:description.trim()||null,image_url:nextImageUrl||null,regular_price:regularNumber,promotional_price:promoPrice?promoNumber:null,promotion_enabled:promo,is_active:active};
+      const payload={business_id:businessId,category_id:categoryId||null,name:name.trim(),description:description.trim()||null,image_url:nextImageUrl||null,regular_price:regularNumber,promotional_price:promoPrice?promoNumber:null,promotion_enabled:promo,is_active:active};
       const result=product?await neon.from('products').update(payload).eq('id',product.id):await neon.from('products').insert(payload);
       if(result.error)throw new Error(result.error.message);
       await onSaved();
@@ -344,10 +400,20 @@ function ProductModal({ businessId, product, onClose, onSaved, setError }: { bus
     setError('');setImageFile(file);setImageUrl('');setImagePreview(URL.createObjectURL(file));
   };
 
+  const createCategory=async(e:FormEvent)=>{
+    e.preventDefault();
+    if(!newCategoryName.trim())return;
+    setCategoryBusy(true);
+    const created=await onAddCategory(newCategoryName);
+    if(created){setCategoryId(created.id);setNewCategoryName('');setShowNewCategory(false);}
+    setCategoryBusy(false);
+  };
+
   return <div className="modal-backdrop" onMouseDown={(e)=>e.target===e.currentTarget&&onClose()}><form className="modal-card product-modal" onSubmit={save}>
     <div className="modal-heading"><div><span className="eyebrow">{product?'ACTUALIZAR':'NUEVO'} PRODUCTO</span><h2>{product?'Editar producto':'Agrega un producto'}</h2></div><button type="button" className="icon-button" onClick={onClose}><X size={19}/></button></div>
     <label>Nombre del producto<input required autoFocus maxLength={100} value={name} onChange={(e)=>setName(e.target.value)} placeholder="Ej. Blusa de lino"/></label>
     <label>Descripción <span className="optional">OPCIONAL</span><textarea rows={2} maxLength={300} value={description} onChange={(e)=>setDescription(e.target.value)} placeholder="Detalles que quieras compartir"/></label>
+    <div className="product-category-field"><label>Categoría<select value={categoryId} onChange={(e)=>setCategoryId(e.target.value)}><option value="">Sin categoría</option>{categories.map((category)=><option key={category.id} value={category.id}>{category.name}</option>)}</select></label><button type="button" className="text-link quick-category-toggle" onClick={()=>setShowNewCategory((shown)=>!shown)}><Plus size={14}/> Crear categoría</button>{showNewCategory&&<form className="quick-category-form" onSubmit={createCategory}><input autoFocus required maxLength={60} value={newCategoryName} onChange={(e)=>setNewCategoryName(e.target.value)} placeholder="Nombre de categoría"/><button className="button button-small button-primary" disabled={categoryBusy}>{categoryBusy?'Creando…':'Crear'}</button></form>}</div>
     <div className="product-image-field"><span className="field-label">Imagen <span className="optional">OPCIONAL</span></span><div className="product-image-controls"><div className="product-image-preview">{imagePreview?<img src={imagePreview} alt="Vista previa del producto"/>:<ImagePlus size={23}/>}</div><div><label className="button button-outline image-select">{imageFile||imageUrl?'Cambiar imagen':'Elegir imagen'}<input type="file" accept="image/jpeg,image/png,image/webp" onChange={(e)=>selectImage(e.target.files?.[0]||null)}/></label>{imagePreview&&<button type="button" className="text-link image-remove" onClick={()=>selectImage(null)}>Quitar imagen</button>}<small>JPG, PNG o WebP · máximo 5 MB</small></div></div></div>
     <div className="form-two"><label>Precio normal<input required type="number" min="0.01" step="0.01" value={regular} onChange={(e)=>setRegular(e.target.value)} placeholder="0.00"/></label><label>Precio promocional<input type="number" min="0.01" step="0.01" value={promoPrice} onChange={(e)=>setPromoPrice(e.target.value)} placeholder="Sin promoción" disabled={!promo}/></label></div>
     <div className="setting-row"><span><strong>Promoción activa</strong><small>Usar el precio promocional hasta que la desactives.</small></span><button type="button" role="switch" aria-checked={promo} className={`switch ${promo?'checked':''}`} onClick={()=>setPromo(!promo)}><i/></button></div>
