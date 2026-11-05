@@ -43,7 +43,7 @@ Después de desplegar la versión que incluye imágenes, aplica una sola vez `da
 
 Para habilitar categorías, aplica después `database/migrations/202611040002_product_categories.sql` una sola vez en esa misma branch. Crea las categorías por negocio, agrega la relación opcional desde productos y actualiza el catálogo público para devolver el nombre de categoría. Si preparas una instalación nueva, aplica las migraciones en orden: inicial, imágenes y categorías.
 
-Para configurar la moneda, aplica después `database/migrations/202611050001_business_currency.sql` una sola vez en la misma branch. Luego el emprendedor puede elegirla desde **Mi negocio**. La selección cambia el formato de los importes; no convierte ni recalcula los valores numéricos ya guardados. Para instalaciones nuevas, aplica también esta migración después de las anteriores.
+Para configurar la presentación de moneda, aplica `database/migrations/202611050001_business_currency.sql` y después `database/migrations/202611050003_business_currency_symbol.sql` una sola vez en la misma branch. El emprendedor escribe el símbolo o etiqueta a mostrar (por ejemplo `C$`, `$`, `US$` o `MXN`) desde **Mi negocio**. Esto solo cambia cómo se presentan los importes; no convierte ni recalcula los valores numéricos guardados. Para instalaciones nuevas, aplica estas migraciones después de la de categorías.
 
 ## 3. Ejecutar localmente
 

@@ -2,7 +2,7 @@ export type Business = {
   id: string;
   owner_user_id: string;
   name: string;
-  currency_code: string;
+  currency_symbol: string;
   primary_color: string;
   secondary_color: string;
   address: string | null;
@@ -58,8 +58,8 @@ export const priceFor = (product: Product) =>
     ? Number(product.promotional_price)
     : Number(product.regular_price);
 
-export const formatMoney = (amount: number, currencyCode = 'NIO') =>
-  new Intl.NumberFormat('en-US', { style: 'currency', currency: currencyCode, maximumFractionDigits: 2 }).format(amount);
+export const formatMoney = (amount: number, currencySymbol = 'C$') =>
+  `${currencySymbol.trim()} ${new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(amount)}`;
 
 export const formatDate = (value: string) => new Intl.DateTimeFormat('es-NI', {
   dateStyle: 'medium', timeStyle: 'short',
