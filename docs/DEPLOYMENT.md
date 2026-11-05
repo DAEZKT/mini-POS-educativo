@@ -45,6 +45,8 @@ Para habilitar categorías, aplica después `database/migrations/202611040002_pr
 
 Para configurar la presentación de moneda, aplica `database/migrations/202611050001_business_currency.sql` y después `database/migrations/202611050003_business_currency_symbol.sql` una sola vez en la misma branch. El emprendedor escribe el símbolo o etiqueta a mostrar (por ejemplo `C$`, `$`, `US$` o `MXN`) desde **Mi negocio**. Esto solo cambia cómo se presentan los importes; no convierte ni recalcula los valores numéricos guardados. Para instalaciones nuevas, aplica estas migraciones después de la de categorías.
 
+Para aceptar pedidos desde el catálogo público, aplica `database/migrations/202611050004_public_catalog_orders.sql` después de las migraciones de categorías y símbolo de moneda. Esto crea las tablas de clientes, pedidos y detalle, y habilita el RPC público que registra solicitudes con los precios calculados desde la base. Luego despliega la app actualizada. Cada negocio debe guardar en **Mi negocio → WhatsApp del negocio** un teléfono con código de país (por ejemplo `+505...`). El catálogo usa el enlace gratuito `wa.me`: registra el pedido como pendiente y prepara un mensaje que el cliente debe confirmar en WhatsApp; no usa WhatsApp Cloud API ni envía mensajes automáticamente.
+
 ## 3. Ejecutar localmente
 
 1. Instala Node.js 20 o posterior y npm.

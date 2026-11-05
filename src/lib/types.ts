@@ -33,6 +33,44 @@ export type Category = {
   created_at: string;
 };
 
+export type Customer = {
+  id: string;
+  business_id: string;
+  name: string;
+  phone: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type PublicOrderStatus = 'pending' | 'confirmed' | 'completed' | 'cancelled';
+
+export type PublicOrderItem = {
+  id: string;
+  public_order_id: string;
+  product_id: string | null;
+  product_name: string;
+  quantity: number;
+  regular_unit_price: number;
+  unit_price: number;
+  promotion_applied: boolean;
+  line_total: number;
+};
+
+export type PublicOrder = {
+  id: string;
+  business_id: string;
+  order_number: number;
+  customer_id: string;
+  customer_name: string;
+  customer_phone: string;
+  notes: string | null;
+  status: PublicOrderStatus;
+  total_amount: number;
+  created_at: string;
+  updated_at: string;
+  public_order_items?: PublicOrderItem[];
+};
+
 export type SaleItem = {
   id: string;
   product_id: string | null;

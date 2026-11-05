@@ -5,13 +5,13 @@ import {
   ArrowUpRight, BarChart3, Check, ChevronDown, CircleHelp, ClipboardList, ImagePlus,
   ExternalLink, Eye, Facebook, Instagram, LogOut, Menu,
   Music2, Package, Plus, Printer, Search, Settings2, ShoppingBag, ShoppingCart,
-  Sparkles, Store, Tag, X, Youtube, FileText,
+  Sparkles, Store, Tag, X, Youtube, FileText, Inbox, Users, Phone,
 } from 'lucide-react';
 import { isNeonConfigured, neon } from './lib/neon';
-import { Business, Category, formatDate, formatMoney, priceFor, Product, Sale } from './lib/types';
+import { Business, Category, Customer, formatDate, formatMoney, priceFor, Product, PublicOrder, PublicOrderStatus, Sale } from './lib/types';
 import { buildReceiptPdf } from './lib/receipt-pdf';
 
-type Page = 'dashboard' | 'products' | 'categories' | 'sale' | 'history' | 'brand';
+type Page = 'dashboard' | 'products' | 'categories' | 'sale' | 'history' | 'publicOrders' | 'customers' | 'brand';
 type CartRow = { product: Product; quantity: number };
 
 const navItems: { id: Page; label: string; icon: typeof BarChart3 }[] = [
@@ -20,6 +20,8 @@ const navItems: { id: Page; label: string; icon: typeof BarChart3 }[] = [
   { id: 'categories', label: 'Categorías', icon: Tag },
   { id: 'sale', label: 'Nueva venta', icon: ShoppingCart },
   { id: 'history', label: 'Ventas', icon: ClipboardList },
+  { id: 'publicOrders', label: 'Pedidos web', icon: Inbox },
+  { id: 'customers', label: 'Clientes', icon: Users },
   { id: 'brand', label: 'Mi negocio', icon: Settings2 },
 ];
 
@@ -55,6 +57,8 @@ function PublicCatalog() {
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('Todas');
+  const [publicCart,setPublicCart]=useState<CartRow[]>([]);
+  const [checkoutOpen,setCheckoutOpen]=useState(false);
   const slug = window.location.pathname.split('/').filter(Boolean).at(-1) || '';
   useEffect(() => {
     let active = true;
@@ -79,18 +83,67 @@ function PublicCatalog() {
     return matchesCategory && searchText.includes(query.trim().toLocaleLowerCase('es'));
   });
   const groups = groupProducts(filteredProducts, (product) => product.category_name);
+  const publicCartTotal=publicCart.reduce((total,row)=>total+priceFor(row.product)*row.quantity,0);
+  const addPublicCart=(product:Product)=>setPublicCart((rows)=>{
+    const existing=rows.find((row)=>row.product.id===product.id);
+    return existing?rows.map((row)=>row.product.id===product.id?{...row,quantity:row.quantity+1}:row):[...rows,{product,quantity:1}];
+  });
+  const changePublicQuantity=(productId:string,delta:number)=>setPublicCart((rows)=>rows.map((row)=>row.product.id===productId?{...row,quantity:Math.max(0,row.quantity+delta)}:row).filter((row)=>row.quantity>0));
   return <main className="public-page" style={{ '--brand': business.primary_color, '--brand-soft': business.secondary_color } as CSSProperties}>
     <header className="public-header">
       <div className="public-brand"><span className="brand-mark"><Store size={19} /></span><div><strong>{business.name}</strong><small>Catálogo de productos</small></div></div>
-      <button className="button button-outline no-print" onClick={() => window.print()}><Printer size={16} /> Imprimir catálogo</button>
+      <div className="public-header-actions"><button className="button button-primary public-cart-button no-print" onClick={()=>setCheckoutOpen(true)}><ShoppingCart size={16}/> Mi pedido{publicCart.length>0&&<span>{publicCart.reduce((n,row)=>n+row.quantity,0)}</span>}</button><button className="button button-outline no-print public-print-button" onClick={() => window.print()}><Printer size={16} /> Imprimir catálogo</button></div>
     </header>
     <section className="public-hero"><span className="public-hero-orb"/><div className="public-hero-copy"><span className="public-eyebrow"><span/> CATÁLOGO DISPONIBLE</span><h1>Encuentra algo<br/><em>que te encante.</em></h1><p>Explora los productos de {business.name} y descubre tu próximo favorito.</p><div className="public-hero-meta"><span><ShoppingBag size={15}/>{products.length} {products.length === 1 ? 'producto disponible' : 'productos disponibles'}</span>{business.address&&<span>{business.address}</span>}</div></div><div className="public-hero-mark"><Store size={42}/></div></section>
     <section className="public-catalog-controls no-print"><div className="public-controls-heading"><div><span className="eyebrow">EXPLORA LA COLECCIÓN</span><h2>Nuestros productos</h2></div><span className="public-result-count">{filteredProducts.length} {filteredProducts.length===1?'resultado':'resultados'}</span></div><label className="public-search"><Search size={17}/><input type="search" value={query} onChange={(event)=>setQuery(event.target.value)} placeholder="Buscar productos…" aria-label="Buscar productos por nombre o descripción"/>{query&&<button type="button" onClick={()=>setQuery('')} aria-label="Limpiar búsqueda"><X size={15}/></button>}</label>{categoryNames.length>0&&<div className="public-filter-row"><span className="public-filter-label">Categorías</span><div className="public-filter-chips"><button className={`public-filter-chip ${selectedCategory==='Todas'?'active':''}`} onClick={()=>setSelectedCategory('Todas')}>Todas <small>{products.length}</small></button>{categoryNames.map((category)=>{const count=products.filter((product)=>(product.category_name?.trim()||'Sin categoría')===category).length;return <button key={category} className={`public-filter-chip ${selectedCategory===category?'active':''}`} onClick={()=>setSelectedCategory(category)}>{category}<small>{count}</small></button>;})}</div></div>}</section>
     {groups.length === 0 ? <section className="public-empty"><span><Search size={24}/></span><h2>{products.length?'No encontramos productos':'Aún no hay productos publicados'}</h2><p>{products.length?'Prueba otra búsqueda o cambia la categoría seleccionada.':'Vuelve pronto para ver los productos de este negocio.'}</p>{(query||selectedCategory!=='Todas')&&<button className="button button-outline no-print" onClick={()=>{setQuery('');setSelectedCategory('Todas');}}>Ver todos los productos</button>}</section> : groups.map((group) => <section className="public-category" key={group.name}><div className="public-category-heading"><h2>{group.name}</h2><span>{group.products.length} {group.products.length===1?'artículo':'artículos'}</span></div><div className="public-grid">{group.products.map((product) => <article className="public-product" key={product.id}>
-      <div className="public-product-image">{product.image_url ? <img src={product.image_url} alt={product.name} loading="lazy" /> : <span className="public-image-placeholder"><ShoppingBag size={31}/></span>}{product.promotion_enabled&&<span className="public-promo-badge">Oferta</span>}</div><div className="public-product-info">{product.category_name&&<span className="public-product-category">{product.category_name}</span>}<h3>{product.name}</h3><p>{product.description || 'Un producto seleccionado para ti.'}</p><div className="price-line">{product.promotion_enabled && <s>{formatMoney(product.regular_price,business.currency_symbol)}</s>}<strong>{formatMoney(priceFor(product),business.currency_symbol)}</strong></div></div>
+      <div className="public-product-image">{product.image_url ? <img src={product.image_url} alt={product.name} loading="lazy" /> : <span className="public-image-placeholder"><ShoppingBag size={31}/></span>}{product.promotion_enabled&&<span className="public-promo-badge">Oferta</span>}</div><div className="public-product-info">{product.category_name&&<span className="public-product-category">{product.category_name}</span>}<h3>{product.name}</h3><p>{product.description || 'Un producto seleccionado para ti.'}</p><div className="price-line">{product.promotion_enabled && <s>{formatMoney(product.regular_price,business.currency_symbol)}</s>}<strong>{formatMoney(priceFor(product),business.currency_symbol)}</strong></div><button className="public-add-button no-print" onClick={()=>addPublicCart(product)}><Plus size={14}/> Agregar al pedido</button></div>
     </article>)}</div></section>)}
     <footer className="public-footer">{business.address && <span>{business.address}</span>}{business.phone && <a href={`tel:${business.phone}`}>{business.phone}</a>}<span>Catálogo creado con Mini POS</span></footer>
+    {publicCart.length>0&&<button className="public-cart-dock no-print" onClick={()=>setCheckoutOpen(true)}><span><ShoppingCart size={17}/>{publicCart.reduce((n,row)=>n+row.quantity,0)}</span><strong>Ver pedido</strong><b>{formatMoney(publicCartTotal,business.currency_symbol)}</b></button>}
+    {checkoutOpen&&<PublicCheckoutModal business={business} slug={slug} cart={publicCart} total={publicCartTotal} onQuantity={changePublicQuantity} onClose={()=>setCheckoutOpen(false)} onOrdered={()=>{setPublicCart([]);}}/>}
   </main>;
+}
+
+function PublicCheckoutModal({business,slug,cart,total,onQuantity,onClose,onOrdered}:{business:Business;slug:string;cart:CartRow[];total:number;onQuantity:(id:string,delta:number)=>void;onClose:()=>void;onOrdered:()=>void}){
+  const [name,setName]=useState('');
+  const [phone,setPhone]=useState('');
+  const [notes,setNotes]=useState('');
+  const [busy,setBusy]=useState(false);
+  const [error,setError]=useState('');
+  const [confirmation,setConfirmation]=useState<{order_number:number;total_amount:number;currency_symbol:string;business_name:string;business_phone:string;items:{product_name:string;quantity:number;unit_price:number;line_total:number}[]}|null>(null);
+  const [whatsappUrl,setWhatsappUrl]=useState('');
+  const currencySymbol=business.currency_symbol||'C$';
+  const hasBusinessWhatsApp=(business.phone||'').replace(/\D/g,'').length>=10;
+  const submit=async(event:FormEvent)=>{
+    event.preventDefault();
+    if(!neon||!cart.length)return;
+    const recipient=business.phone?.replace(/\D/g,'')||'';
+      if(recipient.length<10){setError('Este negocio todavía no configuró un número de WhatsApp válido.');return;}
+    setBusy(true);setError('');
+    const whatsappTab=window.open('about:blank','_blank');
+    try{
+      const {data,error:requestError}=await neon.rpc('create_public_order',{p_slug:slug,p_customer_name:name.trim(),p_customer_phone:phone,p_notes:notes.trim(),p_items:cart.map(({product,quantity})=>({product_id:product.id,quantity}))});
+      if(requestError)throw new Error(requestError.message);
+      if(!data)throw new Error('No se recibió la confirmación del pedido.');
+      const result=data as NonNullable<typeof confirmation>&{id:string};
+      const message=[
+        `Hola, quiero realizar el pedido #${String(result.order_number).padStart(5,'0')} en ${result.business_name}.`,
+        '',
+        ...result.items.map((item)=>`${item.quantity} x ${item.product_name} — ${formatMoney(Number(item.line_total),result.currency_symbol)}`),
+        '',
+        `Total: ${formatMoney(Number(result.total_amount),result.currency_symbol)}`,
+        `Cliente: ${name.trim()}`,
+        `WhatsApp: ${phone.trim()}`,
+        notes.trim()?`Nota: ${notes.trim()}`:'',
+      ].filter(Boolean).join('\n');
+      const target=`https://wa.me/${recipient}?text=${encodeURIComponent(message)}`;
+      setConfirmation(result);setWhatsappUrl(target);onOrdered();
+      if(whatsappTab)whatsappTab.location.href=target;
+    }catch(requestError){whatsappTab?.close();setError(requestError instanceof Error?requestError.message:'No se pudo crear el pedido.');}
+    finally{setBusy(false);}
+  };
+  return <div className="public-order-backdrop" onMouseDown={(event)=>event.target===event.currentTarget&&onClose()}><section className="public-order-modal" role="dialog" aria-modal="true" aria-label="Tu pedido"><header className="public-order-header"><div><span className="eyebrow">{confirmation?'PEDIDO RECIBIDO':'TU PEDIDO'}</span><h2>{confirmation?`Pedido #${String(confirmation.order_number).padStart(5,'0')}`:'Revisa y envía tu pedido'}</h2></div><button className="icon-button" onClick={onClose} aria-label="Cerrar pedido"><X size={19}/></button></header>{confirmation?<div className="public-order-success"><span className="public-order-success-icon"><Check size={23}/></span><h3>Tu pedido quedó registrado</h3><p>El negocio lo revisará como pedido pendiente. Para enviarlo por WhatsApp, confirma el mensaje que se abrió.</p><div className="public-order-success-total"><span>Total solicitado</span><strong>{formatMoney(Number(confirmation.total_amount),confirmation.currency_symbol)}</strong></div><a className="button button-primary button-full" href={whatsappUrl} target="_blank" rel="noreferrer"><Phone size={16}/> Continuar por WhatsApp</a><button className="button button-outline button-full" onClick={onClose}>Volver al catálogo</button></div>:<><div className="public-order-lines">{cart.map(({product,quantity})=><div className="public-order-line" key={product.id}><div className="public-order-product-image">{product.image_url?<img src={product.image_url} alt=""/>:<ShoppingBag size={18}/>}</div><div className="public-order-product"><strong>{product.name}</strong><small>{formatMoney(priceFor(product),currencySymbol)} c/u</small></div><div className="quantity-control"><button type="button" onClick={()=>onQuantity(product.id,-1)} aria-label="Restar una unidad">−</button><span>{quantity}</span><button type="button" onClick={()=>onQuantity(product.id,1)} aria-label="Agregar una unidad">+</button></div><strong className="public-order-line-total">{formatMoney(priceFor(product)*quantity,currencySymbol)}</strong></div>)}</div><form className="public-order-form" onSubmit={submit}><div className="public-order-total"><span>Total del pedido</span><strong>{formatMoney(total,currencySymbol)}</strong></div><label>Tu nombre<input required maxLength={120} value={name} onChange={(event)=>setName(event.target.value)} placeholder="Nombre y apellido"/></label><label>Tu WhatsApp<input required type="tel" minLength={7} maxLength={30} value={phone} onChange={(event)=>setPhone(event.target.value)} placeholder="Ej. +505 8888 8888"/><small>Incluye el código de país para que el negocio pueda contactarte.</small></label><label>Nota para el negocio <span className="optional">OPCIONAL</span><textarea maxLength={500} rows={2} value={notes} onChange={(event)=>setNotes(event.target.value)} placeholder="Entrega, horario u otra indicación"/></label>{!hasBusinessWhatsApp&&<div className="notice" role="status">El negocio aún no ha configurado WhatsApp para recibir pedidos.</div>}{error&&<div className="notice" role="alert">{error}</div>}<button className="button button-primary button-full" disabled={busy||!cart.length||!hasBusinessWhatsApp}>{busy?'Registrando pedido…':'Enviar pedido por WhatsApp'} <ArrowUpRight size={16}/></button><p className="public-order-disclaimer">El pedido queda pendiente. El negocio confirmará disponibilidad y detalles por WhatsApp.</p></form></>}</section></div>;
 }
 
 function AuthScreen({ onAuthenticated }: { onAuthenticated: (userId: string) => void }) {
@@ -216,6 +269,8 @@ export default function App() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [sales, setSales] = useState<Sale[]>([]);
+  const [customers,setCustomers]=useState<Customer[]>([]);
+  const [publicOrders,setPublicOrders]=useState<PublicOrder[]>([]);
   const [page, setPage] = useState<Page>('dashboard');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -249,16 +304,18 @@ export default function App() {
       shop = created;
     }
     setBusiness(shop as Business);
-    const [{ data: productRows, error: productError }, { data: saleRows, error: saleError }, { data: categoryRows, error: categoryError }] = await Promise.all([
+    const [{ data: productRows, error: productError }, { data: saleRows, error: saleError }, { data: categoryRows, error: categoryError }, {data:customerRows,error:customerError}, {data:orderRows,error:orderError}] = await Promise.all([
       neon.from('products').select('*').eq('business_id', shop.id).order('created_at', { ascending: false }),
       neon.from('sales').select('*, sale_items(*)').eq('business_id', shop.id).order('sold_at', { ascending: false }),
       neon.from('categories').select('*').eq('business_id', shop.id).order('name'),
+      neon.from('customers').select('*').eq('business_id', shop.id).order('updated_at', {ascending:false}),
+      neon.from('public_orders').select('*, public_order_items(*)').eq('business_id', shop.id).order('created_at', {ascending:false}),
     ]);
-    if (productError || saleError || categoryError) setError(productError?.message || saleError?.message || categoryError?.message || 'No se pudieron cargar los datos.');
-    setProducts((productRows || []) as Product[]); setSales((saleRows || []) as Sale[]); setCategories((categoryRows || []) as Category[]); setLoading(false);
+    if (productError || saleError || categoryError || customerError || orderError) setError(productError?.message || saleError?.message || categoryError?.message || customerError?.message || orderError?.message || 'No se pudieron cargar los datos.');
+    setProducts((productRows || []) as Product[]); setSales((saleRows || []) as Sale[]); setCategories((categoryRows || []) as Category[]);setCustomers((customerRows||[]) as Customer[]);setPublicOrders((orderRows||[]) as PublicOrder[]);setLoading(false);
   }, [userId]);
 
-  useEffect(() => { if (userId) void loadWorkspace(); else { setBusiness(null); setProducts([]); setCategories([]); setSales([]); } }, [userId, loadWorkspace]);
+  useEffect(() => { if (userId) void loadWorkspace(); else { setBusiness(null); setProducts([]); setCategories([]); setSales([]);setCustomers([]);setPublicOrders([]); } }, [userId, loadWorkspace]);
   useEffect(() => { if (toast) { const timer = window.setTimeout(() => setToast(''), 3200); return () => window.clearTimeout(timer); } }, [toast]);
   useEffect(() => { if (business) { document.documentElement.style.setProperty('--brand', business.primary_color); document.documentElement.style.setProperty('--brand-soft', business.secondary_color); } }, [business]);
 
@@ -318,13 +375,20 @@ export default function App() {
     if (created) setReceipt(created as Sale);
     setPage('history'); setLoading(false); showToast('Venta registrada correctamente.');
   };
+  const updatePublicOrderStatus=async(order:PublicOrder,status:PublicOrderStatus)=>{
+    if(!neon)return;
+    const {error:statusError}=await neon.from('public_orders').update({status,updated_at:new Date().toISOString()}).eq('id',order.id);
+    if(statusError){setError(statusError.message);return;}
+    setPublicOrders((orders)=>orders.map((item)=>item.id===order.id?{...item,status,updated_at:new Date().toISOString()}:item));
+    showToast(status==='confirmed'?'Pedido confirmado.':status==='completed'?'Pedido marcado como completado.':'Pedido cancelado.');
+  };
   const signOut=async()=>{
     if(!neon||loggingOut)return;
     setLoggingOut(true);setError('');
     try{
       const {error:signOutError}=await neon.auth.signOut();
       if(signOutError){setError(signOutError.message);return;}
-      setUserId(null);setBusiness(null);setProducts([]);setCategories([]);setSales([]);setCart([]);setReceipt(null);setProductModal(false);setEditingProduct(null);setMobileNavOpen(false);setLoading(false);
+      setUserId(null);setBusiness(null);setProducts([]);setCategories([]);setSales([]);setCustomers([]);setPublicOrders([]);setCart([]);setReceipt(null);setProductModal(false);setEditingProduct(null);setMobileNavOpen(false);setLoading(false);
     }catch(error){setError(error instanceof Error?error.message:'No se pudo cerrar la sesión.');}
     finally{setLoggingOut(false);}
   };
@@ -332,7 +396,7 @@ export default function App() {
   return <div className="app-shell">
     <aside className={`sidebar ${mobileNavOpen ? 'sidebar-open' : ''}`}><div className="sidebar-top"><a className="logo-lockup" href="#dashboard"><span className="brand-mark"><Store size={19} /></span><span>mini<span className="logo-light">pos</span><small>ESPACIO DE NEGOCIO</small></span></a><button className="icon-button mobile-close" onClick={() => setMobileNavOpen(false)} aria-label="Cerrar menú"><X size={19} /></button></div>
       <div className="side-business"><span className="business-avatar">{business?.name.slice(0, 1).toUpperCase() || 'M'}</span><span><strong>{business?.name || 'Mi negocio'}</strong><small>Plan emprendedor</small></span><ChevronDown size={15} /></div>
-      <div className="nav-caption">MENÚ PRINCIPAL</div><nav className="main-nav">{navItems.map(({ id, label, icon: Icon }) => <button key={id} className={`nav-link ${page === id ? 'selected' : ''}`} onClick={() => { setPage(id); setMobileNavOpen(false); }}><span className="nav-icon"><Icon size={17} strokeWidth={1.9} /></span><span>{label}</span>{id === 'sale' && cart.length > 0 && <i>{cart.reduce((n, row) => n + row.quantity, 0)}</i>}</button>)}</nav>
+      <div className="nav-caption">MENÚ PRINCIPAL</div><nav className="main-nav">{navItems.map(({ id, label, icon: Icon }) => <button key={id} className={`nav-link ${page === id ? 'selected' : ''}`} onClick={() => { setPage(id); setMobileNavOpen(false); }}><span className="nav-icon"><Icon size={17} strokeWidth={1.9} /></span><span>{label}</span>{id === 'sale' && cart.length > 0 && <i>{cart.reduce((n, row) => n + row.quantity, 0)}</i>}{id==='publicOrders'&&publicOrders.filter((order)=>order.status==='pending').length>0&&<i>{publicOrders.filter((order)=>order.status==='pending').length}</i>}</button>)}</nav>
       <div className="sidebar-bottom"><div className="help-card"><span><Sparkles size={17} /></span><strong>Un paso a la vez</strong><p>Tu negocio, organizado y listo para crecer.</p></div><button className="nav-link logout-link" disabled={loggingOut} onClick={() => void signOut()}><LogOut size={18} /><span>{loggingOut?'Cerrando sesión…':'Cerrar sesión'}</span></button><small className="sidebar-version">MINI POS · EDICIÓN REGALO</small></div>
     </aside>
     {mobileNavOpen && <button className="nav-backdrop" onClick={() => setMobileNavOpen(false)} aria-label="Cerrar menú" />}
@@ -349,6 +413,8 @@ export default function App() {
         {page === 'categories' && <CategoriesPage categories={categories} onAdd={addCategory} onRename={renameCategory} onDelete={deleteCategory} />}
         {page === 'sale' && <SalePage products={filteredActive} categories={categories} currencySymbol={business?.currency_symbol||'C$'} query={query} setQuery={setQuery} cart={cart} addToCart={addToCart} changeQuantity={changeQuantity} total={cartTotal} onFinalize={finalizeSale} />}
         {page === 'history' && <HistoryPage sales={sales} currencySymbol={business?.currency_symbol||'C$'} onReceipt={setReceipt} />}
+        {page === 'publicOrders' && <PublicOrdersPage orders={publicOrders} currencySymbol={business?.currency_symbol||'C$'} onStatus={updatePublicOrderStatus} />}
+        {page === 'customers' && <CustomersPage customers={customers} orders={publicOrders} />}
         {page === 'brand' && business && <BrandPage business={business} onSaved={(b) => { setBusiness(b); showToast('La marca del negocio se guardó.'); }} setError={setError} />}
       </div>
     </main>
@@ -430,13 +496,27 @@ function HistoryPage({ sales, currencySymbol, onReceipt }: { sales:Sale[]; curre
   </>;
 }
 
+function PublicOrdersPage({orders,currencySymbol,onStatus}:{orders:PublicOrder[];currencySymbol:string;onStatus:(order:PublicOrder,status:PublicOrderStatus)=>void}){
+  const [filter,setFilter]=useState<PublicOrderStatus>('pending');
+  const labels:Record<PublicOrderStatus,string>={pending:'Pendientes',confirmed:'Confirmados',completed:'Completados',cancelled:'Cancelados'};
+  const filtered=orders.filter((order)=>order.status===filter);
+  return <><PageHeading eyebrow="CATÁLOGO PÚBLICO" title="Pedidos web" description="Revisa las solicitudes que llegan desde tu catálogo y actualiza su estado."/><section className="panel public-orders-panel"><div className="public-order-tabs">{(['pending','confirmed','completed','cancelled'] as PublicOrderStatus[]).map((status)=><button key={status} className={filter===status?'active':''} onClick={()=>setFilter(status)}>{labels[status]}<span>{orders.filter((order)=>order.status===status).length}</span></button>)}</div>{filtered.length? <div className="public-orders-list">{filtered.map((order)=><article className="public-business-order" key={order.id}><div className="public-business-order-top"><div><span className="eyebrow">PEDIDO #{String(order.order_number).padStart(5,'0')}</span><h2>{order.customer_name}</h2><p>{formatDate(order.created_at)} · <a href={`tel:+${order.customer_phone}`}>+{order.customer_phone}</a></p></div><span className={`public-order-status status-${order.status}`}>{labels[order.status]}</span></div><div className="public-business-order-items">{(order.public_order_items||[]).map((item)=><div key={item.id}><span>{item.quantity} × {item.product_name}{item.promotion_applied&&<small>Promoción aplicada</small>}</span><strong>{formatMoney(Number(item.line_total),currencySymbol)}</strong></div>)}</div>{order.notes&&<p className="public-business-order-note"><strong>Nota:</strong> {order.notes}</p>}<div className="public-business-order-footer"><a className="public-customer-contact" href={`https://wa.me/${order.customer_phone}`} target="_blank" rel="noreferrer"><Phone size={14}/> Contactar cliente</a><strong className="public-business-order-total">{formatMoney(Number(order.total_amount),currencySymbol)}</strong><div className="public-business-order-actions">{order.status==='pending'&&<button className="button button-small button-primary" onClick={()=>void onStatus(order,'confirmed')}>Confirmar pedido</button>}{order.status==='confirmed'&&<button className="button button-small button-primary" onClick={()=>void onStatus(order,'completed')}>Marcar completado</button>}{(order.status==='pending'||order.status==='confirmed')&&<button className="button button-small button-outline" onClick={()=>void onStatus(order,'cancelled')}>Cancelar</button>}</div></div></article>)}</div>:<div className="empty-state"><span className="empty-icon"><Inbox size={23}/></span><strong>No hay pedidos {labels[filter].toLowerCase()}</strong><p>Cuando alguien envíe un pedido desde el catálogo, aparecerá aquí.</p></div>}</section></>;
+}
+
+function CustomersPage({customers,orders}:{customers:Customer[];orders:PublicOrder[]}){
+  const [query,setQuery]=useState('');
+  const filtered=customers.filter((customer)=>`${customer.name} ${customer.phone}`.toLowerCase().includes(query.trim().toLowerCase()));
+  const latestOrder=(customerId:string)=>orders.filter((order)=>order.customer_id===customerId).sort((a,b)=>new Date(b.created_at).getTime()-new Date(a.created_at).getTime())[0];
+  return <><PageHeading eyebrow="RELACIÓN CON CLIENTES" title="Clientes" description="Contactos que han enviado pedidos desde tu catálogo público."/><section className="panel customers-panel"><div className="table-toolbar"><div><strong className="table-title">Tus clientes</strong><p>{customers.length} contactos registrados al enviar pedidos web.</p></div><span className="item-count">{customers.length} clientes</span><label className="search-box customer-search"><Search size={15}/><input value={query} onChange={(event)=>setQuery(event.target.value)} placeholder="Buscar cliente…"/></label></div>{filtered.length?<div className="table-scroll"><table><thead><tr><th>CLIENTE</th><th>WHATSAPP</th><th>PEDIDOS</th><th>ÚLTIMO PEDIDO</th><th></th></tr></thead><tbody>{filtered.map((customer)=>{const recent=latestOrder(customer.id);const count=orders.filter((order)=>order.customer_id===customer.id).length;return <tr key={customer.id}><td><div className="sale-number"><span className="sale-mini customer-mini"><Users size={15}/></span><strong>{customer.name}</strong></div></td><td><a className="customer-phone" href={`tel:+${customer.phone}`}>+{customer.phone}</a></td><td>{count}</td><td>{recent?formatDate(recent.created_at):'—'}</td><td><a className="button button-small button-outline" href={`https://wa.me/${customer.phone}`} target="_blank" rel="noreferrer"><Phone size={13}/> WhatsApp</a></td></tr>;})}</tbody></table></div>:<div className="empty-state"><span className="empty-icon"><Users size={23}/></span><strong>{customers.length?'No encontramos ese cliente':'Aún no hay clientes'}</strong><p>{customers.length?'Prueba buscar por nombre o teléfono.':'Los clientes se agregarán cuando envíen un pedido desde tu catálogo público.'}</p></div>}</section></>;
+}
+
 function BrandPage({ business, onSaved, setError }: { business:Business; onSaved:(b:Business)=>void; setError:(v:string)=>void }) {
   const [form,setForm]=useState({name:business.name,currency_symbol:business.currency_symbol||'C$',primary_color:business.primary_color,secondary_color:business.secondary_color,address:business.address||'',phone:business.phone||''});
   const [saving,setSaving]=useState(false);
   const save=async(e:FormEvent)=>{e.preventDefault();if(!neon)return;const values={...form,currency_symbol:form.currency_symbol.trim()};if(!values.currency_symbol){setError('Escribe el símbolo o texto de la moneda.');return;}setSaving(true);setError('');const {data,error}=await neon.from('businesses').update(values).eq('id',business.id).select().single();if(error)setError(error.message);else onSaved(data as Business);setSaving(false);};
   const catalogUrl=`${window.location.origin}/catalogo/${business.public_slug}`;
   return <><PageHeading eyebrow="IDENTIDAD DE TU NEGOCIO" title="Mi negocio" description="Elige cómo se verá tu marca en la app y el catálogo público." />
-    <div className="brand-layout"><form className="panel brand-form" onSubmit={save}><div className="panel-heading"><div><h2>Información del negocio</h2><p>Estos datos se muestran en tus documentos y catálogo.</p></div><span className="icon-surface"><Store size={16}/></span></div><label>Nombre del negocio<input required maxLength={80} value={form.name} onChange={(e)=>setForm({...form,name:e.target.value})}/></label><label>Símbolo o texto de moneda<input required maxLength={16} value={form.currency_symbol} onChange={(e)=>setForm({...form,currency_symbol:e.target.value})} placeholder="Ej. C$, $, US$ o MXN"/></label><p className="currency-note">Escribe cómo quieres mostrar tus precios. Esto no convierte los valores guardados.</p><div className="form-two"><label>Color principal<div className="color-field"><input type="color" value={form.primary_color} onChange={(e)=>setForm({...form,primary_color:e.target.value})}/><span>{form.primary_color.toUpperCase()}</span></div></label><label>Color secundario<div className="color-field"><input type="color" value={form.secondary_color} onChange={(e)=>setForm({...form,secondary_color:e.target.value})}/><span>{form.secondary_color.toUpperCase()}</span></div></label></div><label>Dirección <span className="optional">OPCIONAL</span><input maxLength={180} value={form.address} onChange={(e)=>setForm({...form,address:e.target.value})} placeholder="Dirección de tu negocio"/></label><label>Teléfono <span className="optional">OPCIONAL</span><input maxLength={30} value={form.phone} onChange={(e)=>setForm({...form,phone:e.target.value})} placeholder="+505 0000 0000"/></label><div className="brand-form-footer"><span><Check size={14}/> Se aplicará a catálogo y comprobantes</span><button className="button button-primary" disabled={saving}>{saving?'Guardando…':'Guardar cambios'}</button></div></form>
+    <div className="brand-layout"><form className="panel brand-form" onSubmit={save}><div className="panel-heading"><div><h2>Información del negocio</h2><p>Estos datos se muestran en tus documentos y catálogo.</p></div><span className="icon-surface"><Store size={16}/></span></div><label>Nombre del negocio<input required maxLength={80} value={form.name} onChange={(e)=>setForm({...form,name:e.target.value})}/></label><label>Símbolo o texto de moneda<input required maxLength={16} value={form.currency_symbol} onChange={(e)=>setForm({...form,currency_symbol:e.target.value})} placeholder="Ej. C$, $, US$ o MXN"/></label><p className="currency-note">Escribe cómo quieres mostrar tus precios. Esto no convierte los valores guardados.</p><div className="form-two"><label>Color principal<div className="color-field"><input type="color" value={form.primary_color} onChange={(e)=>setForm({...form,primary_color:e.target.value})}/><span>{form.primary_color.toUpperCase()}</span></div></label><label>Color secundario<div className="color-field"><input type="color" value={form.secondary_color} onChange={(e)=>setForm({...form,secondary_color:e.target.value})}/><span>{form.secondary_color.toUpperCase()}</span></div></label></div><label>Dirección <span className="optional">OPCIONAL</span><input maxLength={180} value={form.address} onChange={(e)=>setForm({...form,address:e.target.value})} placeholder="Dirección de tu negocio"/></label><label>WhatsApp del negocio <span className="optional">OPCIONAL</span><input type="tel" maxLength={30} value={form.phone} onChange={(e)=>setForm({...form,phone:e.target.value})} placeholder="+505 8888 8888"/><small className="brand-field-hint">Incluye el código de país. Se usará para recibir pedidos desde tu catálogo.</small></label><div className="brand-form-footer"><span><Check size={14}/> Se aplicará a catálogo y comprobantes</span><button className="button button-primary" disabled={saving}>{saving?'Guardando…':'Guardar cambios'}</button></div></form>
     <aside className="brand-side"><section className="panel brand-preview"><div className="preview-label"><span className="green-dot"/> VISTA PREVIA DEL CATÁLOGO</div><div className="preview-banner" style={{background:form.primary_color}}><span className="preview-brand-icon"><Store size={18}/></span><strong>{form.name||'Tu negocio'}</strong><small>Catálogo de productos</small></div><div className="preview-body"><div className="preview-product"><span><ShoppingBag size={17}/></span><div><b>Producto de ejemplo</b><small>Descripción de tu producto</small></div><strong>{formatMoney(250,form.currency_symbol)}</strong></div><div className="preview-product"><span><ShoppingBag size={17}/></span><div><b>Otro producto</b><small>Disponible para tu catálogo</small></div><strong>{formatMoney(180,form.currency_symbol)}</strong></div></div></section><section className="panel share-panel"><span className="share-icon"><ExternalLink size={17}/></span><div><strong>Tu catálogo público</strong><p>Comparte el enlace con tus clientes.</p></div><div className="share-url"><input readOnly value={catalogUrl}/><button onClick={()=>{void navigator.clipboard.writeText(catalogUrl);}} title="Copiar enlace"><ClipboardList size={15}/></button></div><a className="text-link" href={catalogUrl} target="_blank" rel="noreferrer">Abrir catálogo <ArrowUpRight size={14}/></a></section></aside></div>
   </>;
 }
