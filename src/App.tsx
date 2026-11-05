@@ -400,20 +400,21 @@ function ProductModal({ businessId, product, categories, onAddCategory, onClose,
     setError('');setImageFile(file);setImageUrl('');setImagePreview(URL.createObjectURL(file));
   };
 
-  const createCategory=async(e:FormEvent)=>{
-    e.preventDefault();
-    if(!newCategoryName.trim())return;
+  const createCategory=async()=>{
+    if(!newCategoryName.trim()||categoryBusy)return;
     setCategoryBusy(true);
-    const created=await onAddCategory(newCategoryName);
-    if(created){setCategoryId(created.id);setNewCategoryName('');setShowNewCategory(false);}
-    setCategoryBusy(false);
+    try{
+      const created=await onAddCategory(newCategoryName);
+      if(created){setCategoryId(created.id);setNewCategoryName('');setShowNewCategory(false);}
+    }catch(error){setError(error instanceof Error?error.message:'No se pudo crear la categoría.');
+    }finally{setCategoryBusy(false);}
   };
 
   return <div className="modal-backdrop" onMouseDown={(e)=>e.target===e.currentTarget&&onClose()}><form className="modal-card product-modal" onSubmit={save}>
     <div className="modal-heading"><div><span className="eyebrow">{product?'ACTUALIZAR':'NUEVO'} PRODUCTO</span><h2>{product?'Editar producto':'Agrega un producto'}</h2></div><button type="button" className="icon-button" onClick={onClose}><X size={19}/></button></div>
     <label>Nombre del producto<input required autoFocus maxLength={100} value={name} onChange={(e)=>setName(e.target.value)} placeholder="Ej. Blusa de lino"/></label>
     <label>Descripción <span className="optional">OPCIONAL</span><textarea rows={2} maxLength={300} value={description} onChange={(e)=>setDescription(e.target.value)} placeholder="Detalles que quieras compartir"/></label>
-    <div className="product-category-field"><label>Categoría<select value={categoryId} onChange={(e)=>setCategoryId(e.target.value)}><option value="">Sin categoría</option>{categories.map((category)=><option key={category.id} value={category.id}>{category.name}</option>)}</select></label><button type="button" className="text-link quick-category-toggle" onClick={()=>setShowNewCategory((shown)=>!shown)}><Plus size={14}/> Crear categoría</button>{showNewCategory&&<form className="quick-category-form" onSubmit={createCategory}><input autoFocus required maxLength={60} value={newCategoryName} onChange={(e)=>setNewCategoryName(e.target.value)} placeholder="Nombre de categoría"/><button className="button button-small button-primary" disabled={categoryBusy}>{categoryBusy?'Creando…':'Crear'}</button></form>}</div>
+    <div className="product-category-field"><label>Categoría<select value={categoryId} onChange={(e)=>setCategoryId(e.target.value)}><option value="">Sin categoría</option>{categories.map((category)=><option key={category.id} value={category.id}>{category.name}</option>)}</select></label><button type="button" className="text-link quick-category-toggle" onClick={()=>setShowNewCategory((shown)=>!shown)}><Plus size={14}/> Crear categoría</button>{showNewCategory&&<div className="quick-category-form"><input autoFocus maxLength={60} value={newCategoryName} onChange={(e)=>setNewCategoryName(e.target.value)} onKeyDown={(e)=>{if(e.key==='Enter'){e.preventDefault();void createCategory();}}} placeholder="Nombre de categoría"/><button type="button" className="button button-small button-primary" disabled={categoryBusy||!newCategoryName.trim()} onClick={()=>void createCategory()}>{categoryBusy?'Creando…':'Crear'}</button></div>}</div>
     <div className="product-image-field"><span className="field-label">Imagen <span className="optional">OPCIONAL</span></span><div className="product-image-controls"><div className="product-image-preview">{imagePreview?<img src={imagePreview} alt="Vista previa del producto"/>:<ImagePlus size={23}/>}</div><div><label className="button button-outline image-select">{imageFile||imageUrl?'Cambiar imagen':'Elegir imagen'}<input type="file" accept="image/jpeg,image/png,image/webp" onChange={(e)=>selectImage(e.target.files?.[0]||null)}/></label>{imagePreview&&<button type="button" className="text-link image-remove" onClick={()=>selectImage(null)}>Quitar imagen</button>}<small>JPG, PNG o WebP · máximo 5 MB</small></div></div></div>
     <div className="form-two"><label>Precio normal<input required type="number" min="0.01" step="0.01" value={regular} onChange={(e)=>setRegular(e.target.value)} placeholder="0.00"/></label><label>Precio promocional<input type="number" min="0.01" step="0.01" value={promoPrice} onChange={(e)=>setPromoPrice(e.target.value)} placeholder="Sin promoción" disabled={!promo}/></label></div>
     <div className="setting-row"><span><strong>Promoción activa</strong><small>Usar el precio promocional hasta que la desactives.</small></span><button type="button" role="switch" aria-checked={promo} className={`switch ${promo?'checked':''}`} onClick={()=>setPromo(!promo)}><i/></button></div>
