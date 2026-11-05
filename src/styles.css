@@ -61,3 +61,4 @@
 @media(max-width:650px){.receipt-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));width:100%;gap:8px}.receipt-actions>.button{width:100%;min-width:0;padding:0 6px;font-size:9px;white-space:nowrap}}
 .content-wrap:has(.pos-page){padding-top:18px}.pos-layout{height:calc(100vh - 155px)}
 @media(max-width:850px){.content-wrap:has(.pos-page){padding-top:14px}.pos-layout{height:calc(100dvh - 194px)}}
+.cart-row{position:relative;padding-right:23px}.cart-remove-item{position:absolute;top:50%;right:0;width:21px;height:21px;display:grid;place-items:center;transform:translateY(-50%);padding:0;border:0;border-radius:6px;background:transparent;color:#aaa9b5;transition:background .15s,color .15s}.cart-remove-item:hover{background:#fff0f0;color:#cf5b62}
