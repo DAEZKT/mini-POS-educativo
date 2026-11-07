@@ -40,6 +40,18 @@ function slugify(value: string) {
     .replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 }
 
+function isValidGoogleMapsUrl(value: string) {
+  try {
+    const url = new URL(value.trim());
+    const host = url.hostname.toLowerCase();
+    if (url.protocol !== 'https:') return false;
+    if (host === 'google.com' || host === 'www.google.com') return /^\/maps(?:\/|$)/i.test(url.pathname);
+    return host === 'maps.google.com' || host === 'maps.app.goo.gl';
+  } catch {
+    return false;
+  }
+}
+
 function withTimeout<T>(request: PromiseLike<T>, milliseconds: number): Promise<T> {
   return new Promise((resolve, reject) => {
     const timer = window.setTimeout(() => reject(new Error('REQUEST_TIMEOUT')), milliseconds);
@@ -190,7 +202,7 @@ function PublicCheckoutModal({business,slug,cart,total,onQuantity,onClose,onOrde
     event.preventDefault();
     if(!cart.length)return;
     if(!captchaToken){setError('Completa la verificación de seguridad antes de enviar.');return;}
-    if(locationUrl.trim()&&!/^https:\/\/(www\.)?(google\.com\/maps|maps\.google\.com|maps\.app\.goo\.gl)(\/|$)/i.test(locationUrl.trim())){setError('Pega un enlace HTTPS válido de Google Maps.');return;}
+    if(locationUrl.trim()&&!isValidGoogleMapsUrl(locationUrl)){setError('Pega un enlace HTTPS válido de Google Maps.');return;}
     const recipient=business.phone?.replace(/\D/g,'')||'';
       if(recipient.length<10){setError('Este negocio todavía no configuró un número de WhatsApp válido.');return;}
     setBusy(true);setError('');
