@@ -417,12 +417,21 @@ export default function App() {
   const activeProducts = products.filter((p) => p.is_active);
   const filteredProducts = products.filter((p) => p.name.toLowerCase().includes(query.toLowerCase()));
   const filteredActive = activeProducts.filter((p) => p.name.toLowerCase().includes(query.toLowerCase()));
-  const periodSales = useMemo(() => sales.filter((s) => period === 'all' || Date.now() - new Date(s.sold_at).getTime() <= Number(period) * 86400000), [sales, period]);
+  const periodSales = useMemo(() => {
+    if (period === 'all') return sales;
+    const start = new Date();
+    start.setHours(0, 0, 0, 0);
+    start.setDate(start.getDate() - Number(period) + 1);
+    return sales.filter((sale) => new Date(sale.sold_at) >= start);
+  }, [sales, period]);
   const totalRevenue = periodSales.reduce((sum, sale) => sum + Number(sale.total_amount), 0);
   const itemCounts: Record<string, { name: string; count: number }> = {};
   periodSales.forEach((sale) => (sale.sale_items || []).forEach((item) => { itemCounts[item.product_name] ||= { name: item.product_name, count: 0 }; itemCounts[item.product_name].count += item.quantity; }));
-  const bestSellers = Object.values(itemCounts).sort((a, b) => b.count - a.count).slice(0, 4);
-  const barMax = Math.max(...periodSales.slice(0, 7).map((s) => Number(s.total_amount)), 1);
+  const sortedProducts = Object.values(itemCounts).sort((a, b) => b.count - a.count);
+  const totalUnitsSold = sortedProducts.reduce((sum, item) => sum + item.count, 0);
+  const bestSellers = sortedProducts.slice(0, 4).map((item) => ({ ...item, percentage: totalUnitsSold ? item.count / totalUnitsSold * 100 : 0 }));
+  const otherUnits = totalUnitsSold - bestSellers.reduce((sum, item) => sum + item.count, 0);
+  if (otherUnits > 0) bestSellers.push({ name: 'Demás productos', count: otherUnits, percentage: otherUnits / totalUnitsSold * 100 });
 
   if (isPublic) return <PublicCatalog />;
   if (!authReady) return <div className="center-loader">Preparando tu espacio…</div>;
@@ -500,7 +509,7 @@ export default function App() {
       <div className="content-wrap">
         {error && <div className="notice page-notice"><CircleHelp size={17} /><span>{error}</span><button onClick={() => setError('')}><X size={16} /></button></div>}
         {loading && <div className="loading-strip"><span /> Sincronizando información…</div>}
-        {page === 'dashboard' && <Dashboard business={business} sales={periodSales} total={totalRevenue} products={products} bestSellers={bestSellers} barMax={barMax} period={period} setPeriod={setPeriod} />}
+        {page === 'dashboard' && <Dashboard business={business} sales={periodSales} total={totalRevenue} products={products} bestSellers={bestSellers} period={period} setPeriod={setPeriod} />}
         {page === 'products' && <ProductsPage products={filteredProducts} categories={categories} currencySymbol={business?.currency_symbol||'C$'} query={query} setQuery={setQuery} onAdd={() => { setEditingProduct(null); setProductModal(true); }} onEdit={(p) => { setEditingProduct(p); setProductModal(true); }} onToggle={async (product) => {
           if (!neon) return;
           const { error: e } = await neon.from('products').update({ is_active: !product.is_active }).eq('id', product.id);
@@ -524,14 +533,41 @@ function PageHeading({ eyebrow, title, description, action }: { eyebrow: string;
   return <div className="page-heading"><div><span className="eyebrow">{eyebrow}</span><h1>{title}</h1><p>{description}</p></div>{action}</div>;
 }
 
-function Dashboard({ business, sales, total, products, bestSellers, barMax, period, setPeriod }: { business: Business | null; sales: Sale[]; total: number; products: Product[]; bestSellers: {name:string;count:number}[]; barMax: number; period:'7'|'30'|'all'; setPeriod:(v:'7'|'30'|'all')=>void }) {
+function Dashboard({ business, sales, total, products, bestSellers, period, setPeriod }: { business: Business | null; sales: Sale[]; total: number; products: Product[]; bestSellers: {name:string;count:number;percentage:number}[]; period:'7'|'30'|'all'; setPeriod:(v:'7'|'30'|'all')=>void }) {
   const activeCount = products.filter((p) => p.is_active).length;
   const currencySymbol=business?.currency_symbol||'C$';
+  const chartData=useMemo(()=>{
+    const now=new Date();
+    const buckets=new Map<string,{key:string;label:string;amount:number}>();
+    const keyForDay=(date:Date)=>`${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
+    const keyForMonth=(date:Date)=>`${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}`;
+    if(period==='all'){
+      const firstMonth=new Date(now.getFullYear(),now.getMonth()-11,1);
+      for(let index=0;index<12;index++){
+        const date=new Date(firstMonth.getFullYear(),firstMonth.getMonth()+index,1);
+        const key=keyForMonth(date);
+        buckets.set(key,{key,label:new Intl.DateTimeFormat('es-NI',{month:'short',year:'2-digit'}).format(date),amount:0});
+      }
+      sales.forEach((sale)=>{const date=new Date(sale.sold_at);const bucket=buckets.get(keyForMonth(date));if(bucket)bucket.amount+=Number(sale.total_amount);});
+    }else{
+      const days=Number(period);
+      const firstDay=new Date(now);firstDay.setHours(0,0,0,0);firstDay.setDate(firstDay.getDate()-days+1);
+      for(let index=0;index<days;index++){
+        const date=new Date(firstDay);date.setDate(firstDay.getDate()+index);
+        const key=keyForDay(date);
+        buckets.set(key,{key,label:new Intl.DateTimeFormat('es-NI',{day:'2-digit',month:'short'}).format(date),amount:0});
+      }
+      sales.forEach((sale)=>{const bucket=buckets.get(keyForDay(new Date(sale.sold_at)));if(bucket)bucket.amount+=Number(sale.total_amount);});
+    }
+    return [...buckets.values()];
+  },[sales,period]);
+  const chartMax=Math.max(...chartData.map((bucket)=>bucket.amount),1);
+  const denseChart=period==='30';
+  const chartDescription=period==='all'?'Total vendido por mes · últimos 12 meses':`Total vendido por día · últimos ${period} días`;
   return <><PageHeading eyebrow="VISTA GENERAL" title={`Hola, ${business?.name || 'emprendedor'}.`} description="Aquí tienes un vistazo de cómo va tu negocio." action={<select className="select-control period-select" value={period} onChange={(e) => setPeriod(e.target.value as '7'|'30'|'all')}><option value="7">Últimos 7 días</option><option value="30">Últimos 30 días</option><option value="all">Todo el historial</option></select>} />
     <div className="stats-grid"><StatCard label="Ventas del período" value={formatMoney(total,currencySymbol)} icon={BarChart3} hint={sales.length ? `${sales.length} ventas registradas` : 'Aún no hay ventas'} /><StatCard label="Ventas realizadas" value={String(sales.length)} icon={ShoppingBag} hint="En el período seleccionado" /><StatCard label="Productos activos" value={String(activeCount)} icon={Package} hint={`De ${products.length} productos registrados`} /></div>
-    <div className="dashboard-grid"><section className="panel sales-chart-panel"><div className="panel-heading"><div><h2>Actividad reciente</h2><p>Ventas registradas en este período</p></div><span className="tiny-tag"><span className="green-dot" /> EN VIVO</span></div>{sales.length === 0 ? <div className="chart-empty"><span><BarChart3 size={23} /></span><strong>Tu primera venta aparecerá aquí</strong><p>Cuando registres una venta, podrás seguir cómo se mueve tu negocio.</p></div> : <div className="bar-chart">{sales.slice(0, 7).reverse().map((sale) => <div className="bar-column" key={sale.id}><div className="bar-value">{formatMoney(Number(sale.total_amount),currencySymbol)}</div><div className="bar-track"><div className="bar-fill" style={{ height: `${Math.max(Number(sale.total_amount) / barMax * 100, 8)}%` }} /></div><small>{new Date(sale.sold_at).toLocaleDateString('es-NI', { day: '2-digit', month: 'short' })}</small></div>)}</div>}</section>
-      <section className="panel best-panel"><div className="panel-heading"><div><h2>Más vendidos</h2><p>Unidades en el período</p></div><span className="icon-surface"><Sparkles size={16} /></span></div>{bestSellers.length ? <div className="ranking-list">{bestSellers.map((item, index) => <div className="ranking-row" key={item.name}><span className={`rank-number rank-${index+1}`}>{String(index+1).padStart(2,'0')}</span><span className="rank-product"><strong>{item.name}</strong><small>{item.count} unidades</small></span><span className="rank-bar"><i style={{ width: `${Math.max(item.count / bestSellers[0].count * 100, 10)}%` }} /></span></div>)}</div> : <div className="mini-empty">Los productos más vendidos aparecerán aquí cuando registres ventas.</div>}<div className="best-footer"><span><ArrowUpRight size={15} /> Unidades vendidas</span><span>{bestSellers.reduce((sum, item) => sum + item.count, 0)}</span></div></section></div>
-    <section className="welcome-strip"><span className="welcome-icon"><Tag size={19} /></span><div><strong>Prepara tu catálogo público</strong><p>Activa tus productos y comparte tu catálogo cuando quieras.</p></div><span className="welcome-progress"><i style={{ width: products.length ? '70%' : '20%' }} /></span><span className="welcome-step">{products.length ? 'Un buen comienzo' : 'Paso 1 de 3'}</span></section>
+    <div className="dashboard-grid"><section className="panel sales-chart-panel"><div className="panel-heading"><div><h2>Actividad de ventas</h2><p>{chartDescription}</p></div><span className="tiny-tag"><span className="green-dot" /> EN VIVO</span></div>{sales.length === 0 ? <div className="chart-empty"><span><BarChart3 size={23} /></span><strong>Aún no hay ventas en este período</strong><p>Cuando registres una venta, se sumará al día o mes correspondiente.</p></div> : <div className={`bar-chart ${denseChart?'bar-chart-dense':''}`}>{chartData.map((bucket,index)=><div className="bar-column" key={bucket.key} title={`${bucket.label}: ${formatMoney(bucket.amount,currencySymbol)}`} aria-label={`${bucket.label}: ${formatMoney(bucket.amount,currencySymbol)}`}><div className="bar-value">{denseChart?'':formatMoney(bucket.amount,currencySymbol)}</div><div className="bar-track"><div className={`bar-fill ${bucket.amount>0?'':'bar-fill-empty'}`} style={{ height: `${bucket.amount>0?Math.max(bucket.amount/chartMax*100,4):0}%` }} /></div><small>{denseChart&&index%5!==0&&index!==chartData.length-1?'':bucket.label}</small></div>)}</div>}</section>
+      <section className="panel best-panel"><div className="panel-heading"><div><h2>Más vendidos</h2><p>Participación en unidades vendidas</p></div><span className="icon-surface"><Sparkles size={16} /></span></div>{bestSellers.length ? <div className="ranking-list">{bestSellers.map((item, index) => <div className="ranking-row" key={item.name}><span className={`rank-number rank-${index+1}`}>{String(index+1).padStart(2,'0')}</span><span className="rank-product"><strong>{item.name}</strong><small>{item.count} {item.name==='Demás productos'?'unidades acumuladas':'unidades'}</small></span><span className="rank-percentage">{new Intl.NumberFormat('es-NI',{maximumFractionDigits:1}).format(item.percentage)}%</span><span className="rank-bar"><i style={{ width: `${item.percentage}%` }} /></span></div>)}</div> : <div className="mini-empty">Los productos más vendidos aparecerán aquí cuando registres ventas.</div>}<div className="best-footer"><span><ArrowUpRight size={15} /> Unidades vendidas</span><span>{bestSellers.reduce((sum, item) => sum + item.count, 0)}</span></div></section></div>
   </>;
 }
 
