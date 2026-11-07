@@ -17,6 +17,7 @@ export type Product = {
   category_id: string | null;
   category_name?: string | null;
   name: string;
+  variant_label?: string | null;
   description: string | null;
   image_url: string | null;
   regular_price: number;
@@ -38,6 +39,8 @@ export type Customer = {
   business_id: string;
   name: string;
   phone: string;
+  address: string | null;
+  location_url: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -49,6 +52,7 @@ export type PublicOrderItem = {
   public_order_id: string;
   product_id: string | null;
   product_name: string;
+  variant_label: string | null;
   quantity: number;
   regular_unit_price: number;
   unit_price: number;
@@ -63,6 +67,8 @@ export type PublicOrder = {
   customer_id: string;
   customer_name: string;
   customer_phone: string;
+  customer_address: string;
+  customer_location_url: string | null;
   notes: string | null;
   status: PublicOrderStatus;
   total_amount: number;

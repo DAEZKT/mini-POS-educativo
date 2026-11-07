@@ -84,6 +84,7 @@ No guardes datos reales en un entorno de prueba. Mantén `.env.local` fuera de G
 
    - `VITE_NEON_AUTH_URL`
    - `VITE_NEON_DATA_API_URL`
+- `VITE_TURNSTILE_SITE_KEY` (sitekey pública de Cloudflare Turnstile)
 
    Ambas deben corresponder a la misma branch de Neon.
 
@@ -102,6 +103,17 @@ No guardes datos reales en un entorno de prueba. Mantén `.env.local` fuera de G
 La subida desde `npm run dev` no incluye la función `/api` de Vercel. Para probar la subida usa un Preview desplegado en Vercel (o `vercel dev` con el proyecto vinculado y `BLOB_READ_WRITE_TOKEN` disponible). Los archivos son públicos por URL porque aparecen en catálogos compartibles. Vercel Blob puede generar cargos según almacenamiento, operaciones y tráfico; revisa el uso del store.
 
 `DATABASE_URL` sirve para tareas administrativas de PostgreSQL y migraciones. No la agregues como variable `VITE_*`, no la incluyas en el código cliente y no la subas al repositorio. El cliente web utiliza las URL de Auth y Data API; RLS y las funciones SQL controlan el acceso a los datos.
+
+### Pedidos del catálogo público y protección anti-bots
+
+1. En Cloudflare Turnstile crea un widget para los dominios de producción y Preview que usarás. Su sitekey es pública; su secret key es privada.
+2. En Vercel configura `VITE_TURNSTILE_SITE_KEY` con la sitekey y `TURNSTILE_SECRET_KEY` con la secret key. No uses el prefijo `VITE_` para la clave secreta.
+3. Agrega `DATABASE_URL` como variable secreta de servidor en Vercel. Copia la conexión PostgreSQL de la branch correcta de Neon; nunca la expongas al navegador ni la pongas en `.env.example`.
+4. Aplica primero `database/migrations/202611050004_public_catalog_orders.sql` y luego `database/migrations/202611060001_public_order_details.sql` a esa misma branch.
+5. Despliega de nuevo. El formulario comprueba el reto en el servidor antes de crear un pedido; la función de Neon ya no acepta llamadas públicas directas.
+6. El cliente puede indicar dirección y opcionalmente compartir un enlace HTTPS de Google Maps. El producto admite una etiqueta opcional de variante/presentación. Ambos datos quedan guardados como información del cliente/pedido y se incluyen en el texto preparado para WhatsApp.
+
+Turnstile frena envíos automatizados, pero no impone por sí solo un límite de solicitudes por IP. Si el sitio recibe ataques sostenidos, configura además una regla de limitación de tráfico en Vercel o Cloudflare.
 
 ## 5. Primera configuración del negocio
 

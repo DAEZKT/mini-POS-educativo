@@ -1,4 +1,4 @@
-import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
 import { upload as uploadBlob } from '@vercel/blob/client';
 import {
@@ -13,6 +13,15 @@ import { buildReceiptPdf } from './lib/receipt-pdf';
 
 type Page = 'dashboard' | 'products' | 'categories' | 'sale' | 'history' | 'publicOrders' | 'customers' | 'brand';
 type CartRow = { product: Product; quantity: number };
+
+declare global {
+  interface Window {
+    turnstile?: {
+      render: (container: HTMLElement, options: Record<string, unknown>) => string;
+      remove: (widgetId: string) => void;
+    };
+  }
+}
 
 const navItems: { id: Page; label: string; icon: typeof BarChart3 }[] = [
   { id: 'dashboard', label: 'Resumen', icon: BarChart3 },
@@ -49,6 +58,45 @@ function withTimeout<T>(request: PromiseLike<T>, milliseconds: number): Promise<
       (error: unknown) => { window.clearTimeout(timer); reject(error); },
     );
   });
+}
+
+function TurnstileWidget({ onToken }: { onToken: (token: string) => void }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const siteKey = import.meta.env.VITE_TURNSTILE_SITE_KEY as string | undefined;
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container || !siteKey) return;
+    let widgetId = '';
+    let cancelled = false;
+    const render = () => {
+      if (cancelled || !window.turnstile || !container || widgetId) return;
+      widgetId = window.turnstile.render(container, {
+        sitekey: siteKey,
+        callback: onToken,
+        'expired-callback': () => onToken(''),
+        'error-callback': () => onToken(''),
+        theme: 'light',
+      });
+    };
+    let script = document.querySelector<HTMLScriptElement>('script[data-turnstile-script]');
+    if (window.turnstile) render();
+    else if (script) script.addEventListener('load', render, { once: true });
+    else {
+      script = document.createElement('script');
+      script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
+      script.async = true;
+      script.defer = true;
+      script.dataset.turnstileScript = 'true';
+      script.addEventListener('load', render, { once: true });
+      document.head.appendChild(script);
+    }
+    return () => {
+      cancelled = true;
+      script?.removeEventListener('load', render);
+      if (widgetId) window.turnstile?.remove(widgetId);
+    };
+  }, [onToken, siteKey]);
+  return siteKey ? <div className="turnstile-field"><div ref={containerRef}/></div> : <div className="notice" role="status">Falta configurar la clave pública de Turnstile en el despliegue.</div>;
 }
 
 function PublicCatalog() {
@@ -97,7 +145,7 @@ function PublicCatalog() {
     <section className="public-hero"><span className="public-hero-orb"/><div className="public-hero-copy"><span className="public-eyebrow"><span/> CATÁLOGO DISPONIBLE</span><h1>Encuentra algo<br/><em>que te encante.</em></h1><p>Explora los productos de {business.name} y descubre tu próximo favorito.</p><div className="public-hero-meta"><span><ShoppingBag size={15}/>{products.length} {products.length === 1 ? 'producto disponible' : 'productos disponibles'}</span>{business.address&&<span>{business.address}</span>}</div></div><div className="public-hero-mark"><Store size={42}/></div></section>
     <section className="public-catalog-controls no-print"><div className="public-controls-heading"><div><span className="eyebrow">EXPLORA LA COLECCIÓN</span><h2>Nuestros productos</h2></div><span className="public-result-count">{filteredProducts.length} {filteredProducts.length===1?'resultado':'resultados'}</span></div><label className="public-search"><Search size={17}/><input type="search" value={query} onChange={(event)=>setQuery(event.target.value)} placeholder="Buscar productos…" aria-label="Buscar productos por nombre o descripción"/>{query&&<button type="button" onClick={()=>setQuery('')} aria-label="Limpiar búsqueda"><X size={15}/></button>}</label>{categoryNames.length>0&&<div className="public-filter-row"><span className="public-filter-label">Categorías</span><div className="public-filter-chips"><button className={`public-filter-chip ${selectedCategory==='Todas'?'active':''}`} onClick={()=>setSelectedCategory('Todas')}>Todas <small>{products.length}</small></button>{categoryNames.map((category)=>{const count=products.filter((product)=>(product.category_name?.trim()||'Sin categoría')===category).length;return <button key={category} className={`public-filter-chip ${selectedCategory===category?'active':''}`} onClick={()=>setSelectedCategory(category)}>{category}<small>{count}</small></button>;})}</div></div>}</section>
     {groups.length === 0 ? <section className="public-empty"><span><Search size={24}/></span><h2>{products.length?'No encontramos productos':'Aún no hay productos publicados'}</h2><p>{products.length?'Prueba otra búsqueda o cambia la categoría seleccionada.':'Vuelve pronto para ver los productos de este negocio.'}</p>{(query||selectedCategory!=='Todas')&&<button className="button button-outline no-print" onClick={()=>{setQuery('');setSelectedCategory('Todas');}}>Ver todos los productos</button>}</section> : groups.map((group) => <section className="public-category" key={group.name}><div className="public-category-heading"><h2>{group.name}</h2><span>{group.products.length} {group.products.length===1?'artículo':'artículos'}</span></div><div className="public-grid">{group.products.map((product) => <article className="public-product" key={product.id}>
-      <div className="public-product-image">{product.image_url ? <img src={product.image_url} alt={product.name} loading="lazy" /> : <span className="public-image-placeholder"><ShoppingBag size={31}/></span>}{product.promotion_enabled&&<span className="public-promo-badge">Oferta</span>}</div><div className="public-product-info">{product.category_name&&<span className="public-product-category">{product.category_name}</span>}<h3>{product.name}</h3><p>{product.description || 'Un producto seleccionado para ti.'}</p><div className="price-line">{product.promotion_enabled && <s>{formatMoney(product.regular_price,business.currency_symbol)}</s>}<strong>{formatMoney(priceFor(product),business.currency_symbol)}</strong></div><button className="public-add-button no-print" onClick={()=>addPublicCart(product)}><Plus size={14}/> Agregar al pedido</button></div>
+      <div className="public-product-image">{product.image_url ? <img src={product.image_url} alt={product.name} loading="lazy" /> : <span className="public-image-placeholder"><ShoppingBag size={31}/></span>}{product.promotion_enabled&&<span className="public-promo-badge">Oferta</span>}</div><div className="public-product-info">{product.category_name&&<span className="public-product-category">{product.category_name}</span>}<h3>{product.name}</h3>{product.variant_label&&<small className="product-variant">{product.variant_label}</small>}<p>{product.description || 'Un producto seleccionado para ti.'}</p><div className="price-line">{product.promotion_enabled && <s>{formatMoney(product.regular_price,business.currency_symbol)}</s>}<strong>{formatMoney(priceFor(product),business.currency_symbol)}</strong></div><button className="public-add-button no-print" onClick={()=>addPublicCart(product)}><Plus size={14}/> Agregar al pedido</button></div>
     </article>)}</div></section>)}
     <footer className="public-footer">{business.address && <span>{business.address}</span>}{business.phone && <a href={`tel:${business.phone}`}>{business.phone}</a>}<span>Catálogo creado con Mini POS</span></footer>
     {publicCart.length>0&&<button className="public-cart-dock no-print" onClick={()=>setCheckoutOpen(true)}><span><ShoppingCart size={17}/>{publicCart.reduce((n,row)=>n+row.quantity,0)}</span><strong>Ver pedido</strong><b>{formatMoney(publicCartTotal,business.currency_symbol)}</b></button>}
@@ -108,42 +156,58 @@ function PublicCatalog() {
 function PublicCheckoutModal({business,slug,cart,total,onQuantity,onClose,onOrdered}:{business:Business;slug:string;cart:CartRow[];total:number;onQuantity:(id:string,delta:number)=>void;onClose:()=>void;onOrdered:()=>void}){
   const [name,setName]=useState('');
   const [phone,setPhone]=useState('');
+  const [address,setAddress]=useState('');
+  const [locationUrl,setLocationUrl]=useState('');
   const [notes,setNotes]=useState('');
+  const [captchaToken,setCaptchaToken]=useState('');
+  const [captchaRefresh,setCaptchaRefresh]=useState(0);
   const [busy,setBusy]=useState(false);
   const [error,setError]=useState('');
-  const [confirmation,setConfirmation]=useState<{order_number:number;total_amount:number;currency_symbol:string;business_name:string;business_phone:string;items:{product_name:string;quantity:number;unit_price:number;line_total:number}[]}|null>(null);
+  const [confirmation,setConfirmation]=useState<{order_number:number;total_amount:number;currency_symbol:string;business_name:string;business_phone:string;items:{product_name:string;variant_label:string|null;quantity:number;unit_price:number;line_total:number}[]}|null>(null);
   const [whatsappUrl,setWhatsappUrl]=useState('');
   const currencySymbol=business.currency_symbol||'C$';
   const hasBusinessWhatsApp=(business.phone||'').replace(/\D/g,'').length>=10;
   const submit=async(event:FormEvent)=>{
     event.preventDefault();
-    if(!neon||!cart.length)return;
+    if(!cart.length)return;
+    if(!captchaToken){setError('Completa la verificación de seguridad antes de enviar.');return;}
+    if(locationUrl.trim()&&!/^https:\/\/(www\.)?(google\.com\/maps|maps\.google\.com|maps\.app\.goo\.gl)(\/|$)/i.test(locationUrl.trim())){setError('Pega un enlace HTTPS válido de Google Maps.');return;}
     const recipient=business.phone?.replace(/\D/g,'')||'';
       if(recipient.length<10){setError('Este negocio todavía no configuró un número de WhatsApp válido.');return;}
     setBusy(true);setError('');
     const whatsappTab=window.open('about:blank','_blank');
     try{
-      const {data,error:requestError}=await neon.rpc('create_public_order',{p_slug:slug,p_customer_name:name.trim(),p_customer_phone:phone,p_notes:notes.trim(),p_items:cart.map(({product,quantity})=>({product_id:product.id,quantity}))});
-      if(requestError)throw new Error(requestError.message);
-      if(!data)throw new Error('No se recibió la confirmación del pedido.');
+      const response=await fetch('/api/public-order',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:captchaToken,slug,name:name.trim(),phone:phone.trim(),address:address.trim(),locationUrl:locationUrl.trim(),notes:notes.trim(),items:cart.map(({product,quantity})=>({product_id:product.id,quantity}))})});
+      const data=await response.json() as {error?:string}|NonNullable<typeof confirmation>&{id:string};
+      if(!response.ok)throw new Error('error' in data&&data.error?data.error:'No se pudo registrar el pedido.');
+      if(!data||'error' in data)throw new Error('No se recibió la confirmación del pedido.');
       const result=data as NonNullable<typeof confirmation>&{id:string};
       const message=[
-        `Hola, quiero realizar el pedido #${String(result.order_number).padStart(5,'0')} en ${result.business_name}.`,
+        `NUEVO PEDIDO - ${result.business_name}`,
         '',
-        ...result.items.map((item)=>`${item.quantity} x ${item.product_name} — ${formatMoney(Number(item.line_total),result.currency_symbol)}`),
-        '',
-        `Total: ${formatMoney(Number(result.total_amount),result.currency_symbol)}`,
+        'DATOS DEL CLIENTE',
         `Cliente: ${name.trim()}`,
-        `WhatsApp: ${phone.trim()}`,
+        `Teléfono: ${phone.trim()}`,
+        `Dirección: ${address.trim()}`,
+        `Ubicación: ${locationUrl.trim()||'No compartida'}`,
+        '',
+        'PRODUCTOS:',
+        ...result.items.flatMap((item)=>[
+          `- (${item.quantity}x) ${item.product_name}${item.variant_label?` [${item.variant_label}]`:''}`,
+          `    ${formatMoney(Number(item.unit_price),result.currency_symbol)} c/u → ${formatMoney(Number(item.line_total),result.currency_symbol)}`,
+        ]),
+        '',
+        `TOTAL: ${formatMoney(Number(result.total_amount),result.currency_symbol)}`,
+        `Pedido #${String(result.order_number).padStart(5,'0')}`,
         notes.trim()?`Nota: ${notes.trim()}`:'',
       ].filter(Boolean).join('\n');
       const target=`https://wa.me/${recipient}?text=${encodeURIComponent(message)}`;
       setConfirmation(result);setWhatsappUrl(target);onOrdered();
       if(whatsappTab)whatsappTab.location.href=target;
-    }catch(requestError){whatsappTab?.close();setError(requestError instanceof Error?requestError.message:'No se pudo crear el pedido.');}
+    }catch(requestError){whatsappTab?.close();setCaptchaToken('');setCaptchaRefresh((value)=>value+1);setError(requestError instanceof Error?requestError.message:'No se pudo crear el pedido.');}
     finally{setBusy(false);}
   };
-  return <div className="public-order-backdrop" onMouseDown={(event)=>event.target===event.currentTarget&&onClose()}><section className="public-order-modal" role="dialog" aria-modal="true" aria-label="Tu pedido"><header className="public-order-header"><div><span className="eyebrow">{confirmation?'PEDIDO RECIBIDO':'TU PEDIDO'}</span><h2>{confirmation?`Pedido #${String(confirmation.order_number).padStart(5,'0')}`:'Revisa y envía tu pedido'}</h2></div><button className="icon-button" onClick={onClose} aria-label="Cerrar pedido"><X size={19}/></button></header>{confirmation?<div className="public-order-success"><span className="public-order-success-icon"><Check size={23}/></span><h3>Tu pedido quedó registrado</h3><p>El negocio lo revisará como pedido pendiente. Para enviarlo por WhatsApp, confirma el mensaje que se abrió.</p><div className="public-order-success-total"><span>Total solicitado</span><strong>{formatMoney(Number(confirmation.total_amount),confirmation.currency_symbol)}</strong></div><a className="button button-primary button-full" href={whatsappUrl} target="_blank" rel="noreferrer"><Phone size={16}/> Continuar por WhatsApp</a><button className="button button-outline button-full" onClick={onClose}>Volver al catálogo</button></div>:<><div className="public-order-lines">{cart.map(({product,quantity})=><div className="public-order-line" key={product.id}><div className="public-order-product-image">{product.image_url?<img src={product.image_url} alt=""/>:<ShoppingBag size={18}/>}</div><div className="public-order-product"><strong>{product.name}</strong><small>{formatMoney(priceFor(product),currencySymbol)} c/u</small></div><div className="quantity-control"><button type="button" onClick={()=>onQuantity(product.id,-1)} aria-label="Restar una unidad">−</button><span>{quantity}</span><button type="button" onClick={()=>onQuantity(product.id,1)} aria-label="Agregar una unidad">+</button></div><strong className="public-order-line-total">{formatMoney(priceFor(product)*quantity,currencySymbol)}</strong></div>)}</div><form className="public-order-form" onSubmit={submit}><div className="public-order-total"><span>Total del pedido</span><strong>{formatMoney(total,currencySymbol)}</strong></div><label>Tu nombre<input required maxLength={120} value={name} onChange={(event)=>setName(event.target.value)} placeholder="Nombre y apellido"/></label><label>Tu WhatsApp<input required type="tel" minLength={7} maxLength={30} value={phone} onChange={(event)=>setPhone(event.target.value)} placeholder="Ej. +505 8888 8888"/><small>Incluye el código de país para que el negocio pueda contactarte.</small></label><label>Nota para el negocio <span className="optional">OPCIONAL</span><textarea maxLength={500} rows={2} value={notes} onChange={(event)=>setNotes(event.target.value)} placeholder="Entrega, horario u otra indicación"/></label>{!hasBusinessWhatsApp&&<div className="notice" role="status">El negocio aún no ha configurado WhatsApp para recibir pedidos.</div>}{error&&<div className="notice" role="alert">{error}</div>}<button className="button button-primary button-full" disabled={busy||!cart.length||!hasBusinessWhatsApp}>{busy?'Registrando pedido…':'Enviar pedido por WhatsApp'} <ArrowUpRight size={16}/></button><p className="public-order-disclaimer">El pedido queda pendiente. El negocio confirmará disponibilidad y detalles por WhatsApp.</p></form></>}</section></div>;
+  return <div className="public-order-backdrop" onMouseDown={(event)=>event.target===event.currentTarget&&onClose()}><section className="public-order-modal" role="dialog" aria-modal="true" aria-label="Tu pedido"><header className="public-order-header"><div><span className="eyebrow">{confirmation?'PEDIDO RECIBIDO':'TU PEDIDO'}</span><h2>{confirmation?`Pedido #${String(confirmation.order_number).padStart(5,'0')}`:'Revisa y envía tu pedido'}</h2></div><button className="icon-button" onClick={onClose} aria-label="Cerrar pedido"><X size={19}/></button></header>{confirmation?<div className="public-order-success"><span className="public-order-success-icon"><Check size={23}/></span><h3>Tu pedido quedó registrado</h3><p>El negocio lo revisará como pedido pendiente. Para enviarlo por WhatsApp, confirma el mensaje que se abrió.</p><div className="public-order-success-total"><span>Total solicitado</span><strong>{formatMoney(Number(confirmation.total_amount),confirmation.currency_symbol)}</strong></div><a className="button button-primary button-full" href={whatsappUrl} target="_blank" rel="noreferrer"><Phone size={16}/> Continuar por WhatsApp</a><button className="button button-outline button-full" onClick={onClose}>Volver al catálogo</button></div>:<><div className="public-order-lines">{cart.map(({product,quantity})=><div className="public-order-line" key={product.id}><div className="public-order-product-image">{product.image_url?<img src={product.image_url} alt=""/>:<ShoppingBag size={18}/>}</div><div className="public-order-product"><strong>{product.name}</strong>{product.variant_label&&<small>{product.variant_label}</small>}<small>{formatMoney(priceFor(product),currencySymbol)} c/u</small></div><div className="quantity-control"><button type="button" onClick={()=>onQuantity(product.id,-1)} aria-label="Restar una unidad">−</button><span>{quantity}</span><button type="button" onClick={()=>onQuantity(product.id,1)} aria-label="Agregar una unidad">+</button></div><strong className="public-order-line-total">{formatMoney(priceFor(product)*quantity,currencySymbol)}</strong></div>)}</div><form className="public-order-form" onSubmit={submit}><div className="public-order-total"><span>Total del pedido</span><strong>{formatMoney(total,currencySymbol)}</strong></div><label>Cliente<input required maxLength={120} value={name} onChange={(event)=>setName(event.target.value)} placeholder="Nombre y apellido"/></label><label>Teléfono / WhatsApp<input required type="tel" minLength={7} maxLength={30} value={phone} onChange={(event)=>setPhone(event.target.value)} placeholder="Ej. +505 8888 8888"/><small>Incluye el código de país para que el negocio pueda contactarte.</small></label><label>Dirección<input required maxLength={300} value={address} onChange={(event)=>setAddress(event.target.value)} placeholder="Dirección para la entrega"/></label><label>Ubicación en Google Maps <span className="optional">OPCIONAL</span><input type="url" maxLength={500} value={locationUrl} onChange={(event)=>setLocationUrl(event.target.value)} placeholder="https://www.google.com/maps?q=…"/><small>Pega el enlace para compartir ubicación desde Google Maps.</small></label><label>Nota para el negocio <span className="optional">OPCIONAL</span><textarea maxLength={500} rows={2} value={notes} onChange={(event)=>setNotes(event.target.value)} placeholder="Horario u otra indicación"/></label><TurnstileWidget key={captchaRefresh} onToken={setCaptchaToken}/>{!hasBusinessWhatsApp&&<div className="notice" role="status">El negocio aún no ha configurado WhatsApp para recibir pedidos.</div>}{error&&<div className="notice" role="alert">{error}</div>}<button className="button button-primary button-full" disabled={busy||!cart.length||!hasBusinessWhatsApp||!captchaToken}>{busy?'Registrando pedido…':'Enviar pedido por WhatsApp'} <ArrowUpRight size={16}/></button><p className="public-order-disclaimer">El pedido queda pendiente. El negocio confirmará disponibilidad y detalles por WhatsApp.</p></form></>}</section></div>;
 }
 
 function AuthScreen({ onAuthenticated }: { onAuthenticated: (userId: string) => void }) {
@@ -500,14 +564,14 @@ function PublicOrdersPage({orders,currencySymbol,onStatus}:{orders:PublicOrder[]
   const [filter,setFilter]=useState<PublicOrderStatus>('pending');
   const labels:Record<PublicOrderStatus,string>={pending:'Pendientes',confirmed:'Confirmados',completed:'Completados',cancelled:'Cancelados'};
   const filtered=orders.filter((order)=>order.status===filter);
-  return <><PageHeading eyebrow="CATÁLOGO PÚBLICO" title="Pedidos web" description="Revisa las solicitudes que llegan desde tu catálogo y actualiza su estado."/><section className="panel public-orders-panel"><div className="public-order-tabs">{(['pending','confirmed','completed','cancelled'] as PublicOrderStatus[]).map((status)=><button key={status} className={filter===status?'active':''} onClick={()=>setFilter(status)}>{labels[status]}<span>{orders.filter((order)=>order.status===status).length}</span></button>)}</div>{filtered.length? <div className="public-orders-list">{filtered.map((order)=><article className="public-business-order" key={order.id}><div className="public-business-order-top"><div><span className="eyebrow">PEDIDO #{String(order.order_number).padStart(5,'0')}</span><h2>{order.customer_name}</h2><p>{formatDate(order.created_at)} · <a href={`tel:+${order.customer_phone}`}>+{order.customer_phone}</a></p></div><span className={`public-order-status status-${order.status}`}>{labels[order.status]}</span></div><div className="public-business-order-items">{(order.public_order_items||[]).map((item)=><div key={item.id}><span>{item.quantity} × {item.product_name}{item.promotion_applied&&<small>Promoción aplicada</small>}</span><strong>{formatMoney(Number(item.line_total),currencySymbol)}</strong></div>)}</div>{order.notes&&<p className="public-business-order-note"><strong>Nota:</strong> {order.notes}</p>}<div className="public-business-order-footer"><a className="public-customer-contact" href={`https://wa.me/${order.customer_phone}`} target="_blank" rel="noreferrer"><Phone size={14}/> Contactar cliente</a><strong className="public-business-order-total">{formatMoney(Number(order.total_amount),currencySymbol)}</strong><div className="public-business-order-actions">{order.status==='pending'&&<button className="button button-small button-primary" onClick={()=>void onStatus(order,'confirmed')}>Confirmar pedido</button>}{order.status==='confirmed'&&<button className="button button-small button-primary" onClick={()=>void onStatus(order,'completed')}>Marcar completado</button>}{(order.status==='pending'||order.status==='confirmed')&&<button className="button button-small button-outline" onClick={()=>void onStatus(order,'cancelled')}>Cancelar</button>}</div></div></article>)}</div>:<div className="empty-state"><span className="empty-icon"><Inbox size={23}/></span><strong>No hay pedidos {labels[filter].toLowerCase()}</strong><p>Cuando alguien envíe un pedido desde el catálogo, aparecerá aquí.</p></div>}</section></>;
+  return <><PageHeading eyebrow="CATÁLOGO PÚBLICO" title="Pedidos web" description="Revisa las solicitudes que llegan desde tu catálogo y actualiza su estado."/><section className="panel public-orders-panel"><div className="public-order-tabs">{(['pending','confirmed','completed','cancelled'] as PublicOrderStatus[]).map((status)=><button key={status} className={filter===status?'active':''} onClick={()=>setFilter(status)}>{labels[status]}<span>{orders.filter((order)=>order.status===status).length}</span></button>)}</div>{filtered.length? <div className="public-orders-list">{filtered.map((order)=><article className="public-business-order" key={order.id}><div className="public-business-order-top"><div><span className="eyebrow">PEDIDO #{String(order.order_number).padStart(5,'0')}</span><h2>{order.customer_name}</h2><p>{formatDate(order.created_at)} · <a href={`tel:+${order.customer_phone}`}>+{order.customer_phone}</a></p></div><span className={`public-order-status status-${order.status}`}>{labels[order.status]}</span></div><div className="public-order-delivery"><p><strong>Dirección:</strong> {order.customer_address||'No indicada'}</p>{order.customer_location_url&&<a href={order.customer_location_url} target="_blank" rel="noreferrer"><ExternalLink size={14}/> Ver ubicación en Google Maps</a>}</div><div className="public-business-order-items">{(order.public_order_items||[]).map((item)=><div key={item.id}><span>{item.quantity} × {item.product_name}{item.variant_label&&<small>{item.variant_label}</small>}{item.promotion_applied&&<small>Promoción aplicada</small>}</span><strong>{formatMoney(Number(item.line_total),currencySymbol)}</strong></div>)}</div>{order.notes&&<p className="public-business-order-note"><strong>Nota:</strong> {order.notes}</p>}<div className="public-business-order-footer"><a className="public-customer-contact" href={`https://wa.me/${order.customer_phone}`} target="_blank" rel="noreferrer"><Phone size={14}/> Contactar cliente</a><strong className="public-business-order-total">{formatMoney(Number(order.total_amount),currencySymbol)}</strong><div className="public-business-order-actions">{order.status==='pending'&&<button className="button button-small button-primary" onClick={()=>void onStatus(order,'confirmed')}>Confirmar pedido</button>}{order.status==='confirmed'&&<button className="button button-small button-primary" onClick={()=>void onStatus(order,'completed')}>Marcar completado</button>}{(order.status==='pending'||order.status==='confirmed')&&<button className="button button-small button-outline" onClick={()=>void onStatus(order,'cancelled')}>Cancelar</button>}</div></div></article>)}</div>:<div className="empty-state"><span className="empty-icon"><Inbox size={23}/></span><strong>No hay pedidos {labels[filter].toLowerCase()}</strong><p>Cuando alguien envíe un pedido desde el catálogo, aparecerá aquí.</p></div>}</section></>;
 }
 
 function CustomersPage({customers,orders}:{customers:Customer[];orders:PublicOrder[]}){
   const [query,setQuery]=useState('');
   const filtered=customers.filter((customer)=>`${customer.name} ${customer.phone}`.toLowerCase().includes(query.trim().toLowerCase()));
   const latestOrder=(customerId:string)=>orders.filter((order)=>order.customer_id===customerId).sort((a,b)=>new Date(b.created_at).getTime()-new Date(a.created_at).getTime())[0];
-  return <><PageHeading eyebrow="RELACIÓN CON CLIENTES" title="Clientes" description="Contactos que han enviado pedidos desde tu catálogo público."/><section className="panel customers-panel"><div className="table-toolbar"><div><strong className="table-title">Tus clientes</strong><p>{customers.length} contactos registrados al enviar pedidos web.</p></div><span className="item-count">{customers.length} clientes</span><label className="search-box customer-search"><Search size={15}/><input value={query} onChange={(event)=>setQuery(event.target.value)} placeholder="Buscar cliente…"/></label></div>{filtered.length?<div className="table-scroll"><table><thead><tr><th>CLIENTE</th><th>WHATSAPP</th><th>PEDIDOS</th><th>ÚLTIMO PEDIDO</th><th></th></tr></thead><tbody>{filtered.map((customer)=>{const recent=latestOrder(customer.id);const count=orders.filter((order)=>order.customer_id===customer.id).length;return <tr key={customer.id}><td><div className="sale-number"><span className="sale-mini customer-mini"><Users size={15}/></span><strong>{customer.name}</strong></div></td><td><a className="customer-phone" href={`tel:+${customer.phone}`}>+{customer.phone}</a></td><td>{count}</td><td>{recent?formatDate(recent.created_at):'—'}</td><td><a className="button button-small button-outline" href={`https://wa.me/${customer.phone}`} target="_blank" rel="noreferrer"><Phone size={13}/> WhatsApp</a></td></tr>;})}</tbody></table></div>:<div className="empty-state"><span className="empty-icon"><Users size={23}/></span><strong>{customers.length?'No encontramos ese cliente':'Aún no hay clientes'}</strong><p>{customers.length?'Prueba buscar por nombre o teléfono.':'Los clientes se agregarán cuando envíen un pedido desde tu catálogo público.'}</p></div>}</section></>;
+  return <><PageHeading eyebrow="RELACIÓN CON CLIENTES" title="Clientes" description="Contactos que han enviado pedidos desde tu catálogo público."/><section className="panel customers-panel"><div className="table-toolbar"><div><strong className="table-title">Tus clientes</strong><p>{customers.length} contactos registrados al enviar pedidos web.</p></div><span className="item-count">{customers.length} clientes</span><label className="search-box customer-search"><Search size={15}/><input value={query} onChange={(event)=>setQuery(event.target.value)} placeholder="Buscar cliente…"/></label></div>{filtered.length?<div className="table-scroll"><table><thead><tr><th>CLIENTE</th><th>WHATSAPP</th><th>DIRECCIÓN</th><th>PEDIDOS</th><th>ÚLTIMO PEDIDO</th><th></th></tr></thead><tbody>{filtered.map((customer)=>{const recent=latestOrder(customer.id);const count=orders.filter((order)=>order.customer_id===customer.id).length;return <tr key={customer.id}><td><div className="sale-number"><span className="sale-mini customer-mini"><Users size={15}/></span><strong>{customer.name}</strong></div></td><td><a className="customer-phone" href={`tel:+${customer.phone}`}>+{customer.phone}</a></td><td><span>{customer.address||'—'}</span>{customer.location_url&&<a className="customer-location-link" href={customer.location_url} target="_blank" rel="noreferrer">Ver mapa</a>}</td><td>{count}</td><td>{recent?formatDate(recent.created_at):'—'}</td><td><a className="button button-small button-outline" href={`https://wa.me/${customer.phone}`} target="_blank" rel="noreferrer"><Phone size={13}/> WhatsApp</a></td></tr>;})}</tbody></table></div>:<div className="empty-state"><span className="empty-icon"><Users size={23}/></span><strong>{customers.length?'No encontramos ese cliente':'Aún no hay clientes'}</strong><p>{customers.length?'Prueba buscar por nombre o teléfono.':'Los clientes se agregarán cuando envíen un pedido desde tu catálogo público.'}</p></div>}</section></>;
 }
 
 function BrandPage({ business, onSaved, setError }: { business:Business; onSaved:(b:Business)=>void; setError:(v:string)=>void }) {
@@ -524,6 +588,7 @@ function BrandPage({ business, onSaved, setError }: { business:Business; onSaved
 function ProductModal({ businessId, product, categories, onAddCategory, onClose, onSaved, setError }: { businessId:string; product:Product|null; categories:Category[]; onAddCategory:(name:string)=>Promise<Category|null>; onClose:()=>void; onSaved:()=>void; setError:(v:string)=>void }) {
   const [name,setName]=useState(product?.name||'');
   const [description,setDescription]=useState(product?.description||'');
+  const [variantLabel,setVariantLabel]=useState(product?.variant_label||'');
   const [regular,setRegular]=useState(product?String(product.regular_price):'');
   const [promoPrice,setPromoPrice]=useState(product?.promotional_price?String(product.promotional_price):'');
   const [active,setActive]=useState(product?.is_active??true);
@@ -577,7 +642,7 @@ function ProductModal({ businessId, product, categories, onAddCategory, onClose,
         nextImageUrl=blob.url;
       }
       setSaveStatus('Guardando producto en Neon…');
-      const payload={business_id:businessId,category_id:categoryId||null,name:name.trim(),description:description.trim()||null,image_url:nextImageUrl||null,regular_price:regularNumber,promotional_price:promoPrice?promoNumber:null,promotion_enabled:promo,is_active:active};
+      const payload={business_id:businessId,category_id:categoryId||null,name:name.trim(),variant_label:variantLabel.trim()||null,description:description.trim()||null,image_url:nextImageUrl||null,regular_price:regularNumber,promotional_price:promoPrice?promoNumber:null,promotion_enabled:promo,is_active:active};
       const request=product?neon.from('products').update(payload).eq('id',product.id):neon.from('products').insert(payload);
       const result=await withTimeout(request,10000);
       if(result.error)throw new Error(result.error.message);
@@ -613,6 +678,7 @@ function ProductModal({ businessId, product, categories, onAddCategory, onClose,
     {formError&&<div className="notice product-form-notice" role="alert"><CircleHelp size={16}/><span>{formError}</span></div>}{saveStatus&&<p className="product-save-status" role="status">{saveStatus}</p>}
     <label>Nombre del producto<input required autoFocus maxLength={100} value={name} onChange={(e)=>setName(e.target.value)} placeholder="Ej. Blusa de lino"/></label>
     <label>Descripción <span className="optional">OPCIONAL</span><textarea rows={2} value={description} onChange={(e)=>setDescription(e.target.value)} placeholder="Detalles que quieras compartir"/></label>
+    <label>Variante o presentación <span className="optional">OPCIONAL</span><input maxLength={80} value={variantLabel} onChange={(e)=>setVariantLabel(e.target.value)} placeholder="Ej. T: 36 · 46 cm x 46 cm"/><small>Se muestra en el catálogo y en el pedido de WhatsApp.</small></label>
     <div className="product-category-field"><label>Categoría<select value={categoryId} onChange={(e)=>setCategoryId(e.target.value)}><option value="">Sin categoría</option>{categories.map((category)=><option key={category.id} value={category.id}>{category.name}</option>)}</select></label><button type="button" className="text-link quick-category-toggle" onClick={()=>setShowNewCategory((shown)=>!shown)}><Plus size={14}/> Crear categoría</button>{showNewCategory&&<div className="quick-category-form"><input autoFocus maxLength={60} value={newCategoryName} onChange={(e)=>setNewCategoryName(e.target.value)} onKeyDown={(e)=>{if(e.key==='Enter'){e.preventDefault();void createCategory();}}} placeholder="Nombre de categoría"/><button type="button" className="button button-small button-primary" disabled={categoryBusy||!newCategoryName.trim()} onClick={()=>void createCategory()}>{categoryBusy?'Creando…':'Crear'}</button></div>}</div>
     <div className="product-image-field"><span className="field-label">Imagen <span className="optional">OPCIONAL</span></span><div className="product-image-controls"><div className="product-image-preview">{imagePreview?<img src={imagePreview} alt="Vista previa del producto"/>:<ImagePlus size={23}/>}</div><div><label className="button button-outline image-select">{imageFile||imageUrl?'Cambiar imagen':'Elegir imagen'}<input type="file" accept="image/jpeg,image/png,image/webp" onChange={(e)=>selectImage(e.target.files?.[0]||null)}/></label>{imagePreview&&<button type="button" className="text-link image-remove" onClick={()=>selectImage(null)}>Quitar imagen</button>}<small>JPG, PNG o WebP · máximo 5 MB</small></div></div></div>
     <div className="form-two"><label>Precio normal<div className="price-input-wrap"><input required type="number" min="0.01" step="any" value={regular} onChange={(e)=>setRegular(e.target.value)} placeholder="0.00"/><span className="price-stepper"><button type="button" aria-label="Aumentar precio normal en 10" onClick={()=>adjustPrice(regular,setRegular,10)}>▲</button><button type="button" aria-label="Disminuir precio normal en 10" disabled={!regular||Number(regular)<=10} onClick={()=>adjustPrice(regular,setRegular,-10)}>▼</button></span></div></label><label>Precio promocional<div className="price-input-wrap"><input type="number" min="0.01" step="any" value={promoPrice} onChange={(e)=>setPromoPrice(e.target.value)} placeholder="Sin promoción" disabled={!promo}/><span className="price-stepper"><button type="button" aria-label="Aumentar precio promocional en 10" disabled={!promo} onClick={()=>adjustPrice(promoPrice,setPromoPrice,10)}>▲</button><button type="button" aria-label="Disminuir precio promocional en 10" disabled={!promo||!promoPrice||Number(promoPrice)<=10} onClick={()=>adjustPrice(promoPrice,setPromoPrice,-10)}>▼</button></span></div></label></div>
