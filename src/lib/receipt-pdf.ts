@@ -37,7 +37,7 @@ export function buildReceiptPdf(sale: Sale, business: Business): Uint8Array {
   const items = sale.sale_items || [];
   const itemLines = items.map((item: SaleItem) => ({
     item,
-    nameLines: wrapText(`${item.quantity} x ${item.product_name}`, 34),
+    nameLines: wrapText(`${item.quantity} x ${item.product_name}${item.variant_label ? ` [${item.variant_label}]` : ''}`, 34),
   }));
   const itemHeight = itemLines.reduce((height, row) => height + row.nameLines.length * 12 + (row.item.promotion_applied ? 10 : 0) + 9, 0);
   const pageHeight = Math.max(280, 250 + itemHeight);

@@ -109,11 +109,13 @@ La subida desde `npm run dev` no incluye la función `/api` de Vercel. Para prob
 1. En Cloudflare Turnstile crea un widget para los dominios de producción y Preview que usarás. Su sitekey es pública; su secret key es privada.
 2. En Vercel configura `VITE_TURNSTILE_SITE_KEY` con la sitekey y `TURNSTILE_SECRET_KEY` con la secret key. No uses el prefijo `VITE_` para la clave secreta.
 3. Agrega `DATABASE_URL` como variable secreta de servidor en Vercel. Copia la conexión PostgreSQL de la branch correcta de Neon; nunca la expongas al navegador ni la pongas en `.env.example`.
-4. Aplica primero `database/migrations/202611050004_public_catalog_orders.sql` y luego `database/migrations/202611060001_public_order_details.sql` a esa misma branch.
+4. Aplica las migraciones de pedidos en orden y en esa misma branch: `202611050004_public_catalog_orders.sql`, `202611060001_public_order_details.sql`, `202611070001_accept_google_maps_query_urls.sql` y `202611070002_public_orders_to_sales.sql`.
 5. Despliega de nuevo. El formulario comprueba el reto en el servidor antes de crear un pedido; la función de Neon ya no acepta llamadas públicas directas.
 6. El cliente puede indicar dirección y opcionalmente compartir un enlace HTTPS de Google Maps. El producto admite una etiqueta opcional de variante/presentación. Ambos datos quedan guardados como información del cliente/pedido y se incluyen en el texto preparado para WhatsApp.
 
 Turnstile frena envíos automatizados, pero no impone por sí solo un límite de solicitudes por IP. Si el sitio recibe ataques sostenidos, configura además una regla de limitación de tráfico en Vercel o Cloudflare.
+
+Al aplicar `202611070002_public_orders_to_sales.sql`, todo pedido web que pase a estado completado se registra una sola vez en Ventas, con un consecutivo de venta nuevo y una referencia al número original del pedido. La migración también incluye en Ventas los pedidos que ya estaban completados.
 
 ## 5. Primera configuración del negocio
 

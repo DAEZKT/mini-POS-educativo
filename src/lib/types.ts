@@ -81,6 +81,7 @@ export type SaleItem = {
   id: string;
   product_id: string | null;
   product_name: string;
+  variant_label?: string | null;
   quantity: number;
   regular_unit_price: number;
   unit_price: number;
@@ -92,6 +93,8 @@ export type Sale = {
   id: string;
   business_id: string;
   sale_number: number;
+  public_order_id?: string | null;
+  public_order_number?: number | null;
   sold_at: string;
   total_amount: number;
   sale_items?: SaleItem[];
