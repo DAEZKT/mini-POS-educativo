@@ -140,6 +140,21 @@ Al aplicar `202611070005_link_customers_to_sales.sql`, cada venta del punto de v
 - Antes de ejecutar una migración, verifica cuidadosamente el proyecto y branch de la cadena `DATABASE_URL`.
 - Conserva respaldos y un procedimiento probado de restauración antes de cambios importantes.
 
+### Error de función ausente en la caché de Neon Data API
+
+Si la app muestra `Could not find the function public.create_sale(p_customer_id, p_items) in the schema cache` después de aplicar `202611070005_link_customers_to_sales.sql`, comprueba primero que la función exista en la misma branch/base de datos configurada para la app:
+
+```sql
+select pg_get_function_arguments(p.oid)
+from pg_proc p
+join pg_namespace n on n.oid = p.pronamespace
+where n.nspname = 'public' and p.proname = 'create_sale';
+```
+
+La firma esperada es `p_items jsonb, p_customer_id uuid DEFAULT NULL::uuid`. También se puede comprobar el permiso con `select has_function_privilege('authenticated', 'public.create_sale(jsonb,uuid)', 'execute');`; PostgreSQL puede mostrar `t` para `true`.
+
+Si la función y el permiso existen, pero sigue el error, actualizar o volver a guardar la configuración de **Data API** en Neon para esa misma branch y base de datos refresca la caché del esquema. En una instalación de este proyecto, `NOTIFY pgrst, 'reload schema';` y un redeploy de Vercel no bastaron; actualizar la configuración de Data API sí lo resolvió. No hace falta cambiar variables de Vercel. Neon documenta que actualizar la configuración de Data API refresca la caché: https://api-docs.neon.tech/reference/updateprojectbranchdataapi.
+
 ## Lista de comprobación antes de compartir la instalación
 
 - El emprendedor tiene acceso a su proyecto Neon, Vercel y repositorio.
