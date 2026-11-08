@@ -105,6 +105,7 @@ function PublicCatalog() {
   const [business, setBusiness] = useState<Business | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
+  const [catalogError, setCatalogError] = useState('');
   const [query, setQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('Todas');
   const [publicCart,setPublicCart]=useState<CartRow[]>([]);
@@ -116,18 +117,30 @@ function PublicCatalog() {
   useEffect(() => {
     let active = true;
     (async () => {
-      if (!neon) { setLoading(false); return; }
-      const { data, error } = await neon.rpc('get_public_catalog', { p_slug: slug });
-      if (!active || error || !data) { setLoading(false); return; }
-      const catalog = data as { business: Business; products: Product[] };
-      if (active) { setBusiness(catalog.business); setProducts(catalog.products || []); setLoading(false); }
+      if (!neon) {
+        if (active) { setCatalogError('La conexión con Neon no está configurada en este despliegue.'); setLoading(false); }
+        return;
+      }
+      try {
+        const { data, error } = await neon.rpc('get_public_catalog', { p_slug: slug });
+        if (!active) return;
+        if (error) { setCatalogError(error.message || 'Neon rechazó la solicitud del catálogo.'); setLoading(false); return; }
+        if (!data) { setCatalogError('Neon respondió sin datos para este enlace.'); setLoading(false); return; }
+        const catalog = data as { business: Business; products: Product[] };
+        if (!catalog.business) { setCatalogError('La respuesta no incluye los datos del negocio.'); setLoading(false); return; }
+        setBusiness(catalog.business); setProducts(catalog.products || []); setLoading(false);
+      } catch (cause) {
+        if (!active) return;
+        setCatalogError(cause instanceof Error ? cause.message : String(cause));
+        setLoading(false);
+      }
     })();
     return () => { active = false; };
   }, [slug]);
   useEffect(()=>setVisibleProductCount(12),[query,selectedCategory]);
 
   if (loading) return <div className="public-loading">Cargando catálogo…</div>;
-  if (!business) return <div className="public-loading"><Store size={28} /><h1>Catálogo no disponible</h1><p>Revisa el enlace o contacta al negocio.</p></div>;
+  if (!business) return <div className="public-loading"><Store size={28} /><h1>Catálogo no disponible</h1><p>Revisa el enlace o contacta al negocio.</p>{catalogError&&<p role="alert">Detalle técnico: {catalogError}</p>}</div>;
   const categoryNames = [...new Set(products.map((product) => product.category_name?.trim() || 'Sin categoría'))]
     .sort((a, b) => a === 'Sin categoría' ? 1 : b === 'Sin categoría' ? -1 : a.localeCompare(b, 'es'));
   const filteredProducts = products.filter((product) => {
