@@ -109,7 +109,7 @@ La subida desde `npm run dev` no incluye la función `/api` de Vercel. Para prob
 1. En Cloudflare Turnstile crea un widget para los dominios de producción y Preview que usarás. Su sitekey es pública; su secret key es privada.
 2. En Vercel configura `VITE_TURNSTILE_SITE_KEY` con la sitekey y `TURNSTILE_SECRET_KEY` con la secret key. No uses el prefijo `VITE_` para la clave secreta.
 3. Agrega `DATABASE_URL` como variable secreta de servidor en Vercel. Copia la conexión PostgreSQL de la branch correcta de Neon; nunca la expongas al navegador ni la pongas en `.env.example`.
-4. Aplica las migraciones de pedidos y clientes en orden y en esa misma branch: `202611050004_public_catalog_orders.sql`, `202611060001_public_order_details.sql`, `202611070001_accept_google_maps_query_urls.sql`, `202611070002_public_orders_to_sales.sql` y `202611070003_manual_customer_management.sql`.
+4. Aplica las migraciones de pedidos y clientes en orden y en esa misma branch: `202611050004_public_catalog_orders.sql`, `202611060001_public_order_details.sql`, `202611070001_accept_google_maps_query_urls.sql`, `202611070002_public_orders_to_sales.sql`, `202611070003_manual_customer_management.sql` y `202611070004_preserve_customers_and_confirm_order_completion.sql`.
 5. Despliega de nuevo. El formulario comprueba el reto en el servidor antes de crear un pedido; la función de Neon ya no acepta llamadas públicas directas.
 6. El cliente puede indicar dirección y opcionalmente compartir un enlace HTTPS de Google Maps. El producto admite una etiqueta opcional de variante/presentación. Ambos datos quedan guardados como información del cliente/pedido y se incluyen en el texto preparado para WhatsApp.
 
@@ -118,6 +118,8 @@ Turnstile frena envíos automatizados, pero no impone por sí solo un límite de
 Al aplicar `202611070002_public_orders_to_sales.sql`, todo pedido web que pase a estado completado se registra una sola vez en Ventas, con un consecutivo de venta nuevo y una referencia al número original del pedido. La migración también incluye en Ventas los pedidos que ya estaban completados.
 
 Al aplicar `202611070003_manual_customer_management.sql`, el negocio puede agregar y editar clientes desde la app. El teléfono se guarda solo con dígitos, incluido el código de país, y es único por negocio. Los pedidos web ya crean o reutilizan ese mismo cliente al enviarse; completar el pedido no crea otro registro. Un nombre coincidente con otro teléfono solo genera una advertencia para revisión.
+
+Al aplicar `202611070004_preserve_customers_and_confirm_order_completion.sql`, un pedido web nuevo conserva los datos que el comprador envió como una instantánea del pedido sin sobrescribir el contacto guardado. Al marcarlo completado, el negocio puede conservar el contacto o actualizarlo con esos datos. Los pedidos web completados muestran el comprador original en el historial y mantienen el detalle de productos.
 
 ## 5. Primera configuración del negocio
 
