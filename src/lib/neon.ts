@@ -6,7 +6,7 @@ const dataApiUrl = import.meta.env.VITE_NEON_DATA_API_URL;
 export const isNeonConfigured = Boolean(authUrl && dataApiUrl && !authUrl.includes('your-branch'));
 export const neon = isNeonConfigured
   ? createClient({
-      auth: { adapter: SupabaseAuthAdapter(), url: authUrl },
+      auth: { adapter: SupabaseAuthAdapter(), url: authUrl, allowAnonymous: true },
       dataApi: { url: dataApiUrl },
     })
   : null;
