@@ -93,6 +93,7 @@ export type Sale = {
   id: string;
   business_id: string;
   sale_number: number;
+  customer_id?: string | null;
   public_order_id?: string | null;
   public_order_number?: number | null;
   sold_at: string;
