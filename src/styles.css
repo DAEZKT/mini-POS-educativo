@@ -154,3 +154,4 @@
 .cart-customer-select select{width:100%;height:36px;padding:0 10px;border:1px solid #e8e7ed;border-radius:8px;background:#fff;color:#555466;font-size:9px;outline:0}
 .cart-customer-select select:focus{border-color:color-mix(in srgb,var(--brand) 45%,white);box-shadow:0 0 0 3px color-mix(in srgb,var(--brand) 9%,transparent)}
 .cart-customer-select>small{color:#9998a5;font-size:8px;font-weight:400}
+.sidebar{overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:#d8d6e1 transparent}.main-nav{flex:0 0 auto;min-height:auto;overflow:visible;padding-bottom:8px}.sidebar-bottom{flex:none;margin-top:12px}.access-nav-link{flex:none;margin-bottom:8px}
