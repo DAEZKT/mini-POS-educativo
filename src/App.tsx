@@ -12,8 +12,11 @@ import { isNeonConfigured, neon } from './lib/neon';
 import { Business, Category, Customer, formatDate, formatMoney, priceFor, Product, PublicOrder, PublicOrderStatus, Sale } from './lib/types';
 import { buildReceiptPdf } from './lib/receipt-pdf';
 
-type Page = 'dashboard' | 'products' | 'categories' | 'sale' | 'history' | 'publicOrders' | 'customers' | 'brand';
+type Page = 'dashboard' | 'products' | 'categories' | 'sale' | 'history' | 'publicOrders' | 'customers' | 'brand' | 'access';
 type CartRow = { product: Product; quantity: number };
+type InstallationMode = 'personal' | 'saas';
+type InstallationConfig = { access_mode: InstallationMode; initialized: boolean };
+type InstallationAccess = { status: 'pending' | 'approved' | 'revoked'; role: 'owner' | 'admin' };
 
 declare global {
   interface Window {
@@ -33,6 +36,7 @@ const navItems: { id: Page; label: string; icon: typeof BarChart3 }[] = [
   { id: 'publicOrders', label: 'Pedidos web', icon: Inbox },
   { id: 'customers', label: 'Clientes', icon: Users },
   { id: 'brand', label: 'Mi negocio', icon: Settings2 },
+  { id: 'access', label: 'Accesos', icon: Users },
 ];
 
 function slugify(value: string) {
@@ -257,7 +261,7 @@ function PublicCheckoutModal({business,slug,cart,total,onQuantity,onClose,onOrde
   return <div className="public-order-backdrop" onMouseDown={(event)=>event.target===event.currentTarget&&onClose()}><section className="public-order-modal" role="dialog" aria-modal="true" aria-label="Tu pedido"><header className="public-order-header"><div><span className="eyebrow">{confirmation?'PEDIDO RECIBIDO':'TU PEDIDO'}</span><h2>{confirmation?`Pedido #${String(confirmation.order_number).padStart(5,'0')}`:'Revisa y envía tu pedido'}</h2></div><button className="icon-button" onClick={onClose} aria-label="Cerrar pedido"><X size={19}/></button></header>{confirmation?<div className="public-order-success"><span className="public-order-success-icon"><Check size={23}/></span><h3>Tu pedido quedó registrado</h3><p>El negocio lo revisará como pedido pendiente. Para enviarlo por WhatsApp, confirma el mensaje que se abrió.</p><div className="public-order-success-total"><span>Total solicitado</span><strong>{formatMoney(Number(confirmation.total_amount),confirmation.currency_symbol)}</strong></div><a className="button button-primary button-full" href={whatsappUrl} target="_blank" rel="noreferrer"><Phone size={16}/> Continuar por WhatsApp</a><button className="button button-outline button-full" onClick={onClose}>Volver al catálogo</button></div>:<><div className="public-order-lines">{cart.map(({product,quantity})=><div className="public-order-line" key={product.id}><div className="public-order-product-image">{product.image_url?<img src={product.image_url} alt=""/>:<ShoppingBag size={18}/>}</div><div className="public-order-product"><strong>{product.name}</strong>{product.variant_label&&<small>{product.variant_label}</small>}<small>{formatMoney(priceFor(product),currencySymbol)} c/u</small></div><div className="quantity-control"><button type="button" onClick={()=>onQuantity(product.id,-1)} aria-label="Restar una unidad">−</button><span>{quantity}</span><button type="button" onClick={()=>onQuantity(product.id,1)} aria-label="Agregar una unidad">+</button></div><strong className="public-order-line-total">{formatMoney(priceFor(product)*quantity,currencySymbol)}</strong></div>)}</div><form className="public-order-form" onSubmit={submit}><div className="public-order-total"><span>Total del pedido</span><strong>{formatMoney(total,currencySymbol)}</strong></div><label>Cliente<input required maxLength={120} value={name} onChange={(event)=>setName(event.target.value)} placeholder="Nombre y apellido"/></label><label>Teléfono / WhatsApp<input required type="tel" minLength={7} maxLength={30} value={phone} onChange={(event)=>setPhone(event.target.value)} placeholder="Ej. +505 8888 8888"/><small>Incluye el código de país para que el negocio pueda contactarte.</small></label><label>Dirección<input required maxLength={300} value={address} onChange={(event)=>setAddress(event.target.value)} placeholder="Dirección para la entrega"/></label><label>Ubicación en Google Maps <span className="optional">OPCIONAL</span><div className="location-input-row"><input type="url" maxLength={500} value={locationUrl} onChange={(event)=>{setLocationUrl(event.target.value);setLocationStatus('');}} placeholder="https://www.google.com/maps?q=…"/><button type="button" className="location-capture-button" onClick={captureLocation} disabled={capturingLocation} aria-label="Capturar mi ubicación GPS" title="Usar mi ubicación actual"><LocateFixed size={17}/><span>{capturingLocation?'Obteniendo…':'Mi ubicación'}</span></button></div><small>{locationStatus||'Pega un enlace de Maps o usa tu ubicación actual. El navegador pedirá permiso.'}</small></label><label>Nota para el negocio <span className="optional">OPCIONAL</span><textarea maxLength={500} rows={2} value={notes} onChange={(event)=>setNotes(event.target.value)} placeholder="Horario u otra indicación"/></label><TurnstileWidget key={captchaRefresh} onToken={setCaptchaToken}/>{!hasBusinessWhatsApp&&<div className="notice" role="status">El negocio aún no ha configurado WhatsApp para recibir pedidos.</div>}{error&&<div className="notice" role="alert">{error}</div>}<button className="button button-primary button-full" disabled={busy||!cart.length||!hasBusinessWhatsApp||!captchaToken}>{busy?'Registrando pedido…':'Enviar pedido por WhatsApp'} <ArrowUpRight size={16}/></button><p className="public-order-disclaimer">El pedido queda pendiente. El negocio confirmará disponibilidad y detalles por WhatsApp.</p></form></>}</section></div>;
 }
 
-function AuthScreen({ onAuthenticated }: { onAuthenticated: (userId: string) => void }) {
+function AuthScreen({ onAuthenticated, canSignUp }: { onAuthenticated: (userId: string) => void; canSignUp: boolean }) {
   const [mode, setMode] = useState<'login' | 'signup'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -326,7 +330,48 @@ function AuthScreen({ onAuthenticated }: { onAuthenticated: (userId: string) => 
     <section className="auth-main"><div className="auth-form-wrap"><span className="mobile-brand"><Store size={18} /> mini pos</span><span className="eyebrow">{mode === 'login' ? 'QUÉ BUENO VERTE' : 'UN GRAN PRIMER PASO'}</span><h2>{mode === 'login' ? 'Inicia sesión' : 'Crea tu cuenta'}</h2><p className="muted">{mode === 'login' ? 'Ingresa para continuar con tu negocio.' : 'Configura tu espacio para empezar a vender.'}</p>{mode === 'signup' && <p className="muted" style={{ marginTop: 10, lineHeight: 1.6 }}>Si la verificación está activa, confirma el correo antes de entrar. Revisa también spam. Si no recibes el código, usa “Reenviar código” o revisa la configuración de correo en Neon.</p>}
     {verificationPending ? <form onSubmit={verifyEmail} className="auth-form"><label>Correo electrónico<input required type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="tu@correo.com" /></label><label>Código de verificación<input required inputMode="numeric" autoComplete="one-time-code" value={verificationCode} onChange={(e) => setVerificationCode(e.target.value)} placeholder="Código del correo" /></label>{message && <div className="notice">{message}</div>}<button className="button button-primary button-full" disabled={busy}>{busy ? 'Verificando…' : 'Verificar correo'} <ArrowUpRight size={16} /></button><button type="button" className="button button-outline button-full" disabled={busy} onClick={()=>void resendVerification()}>Reenviar código</button><div className="auth-switch"><button type="button" onClick={()=>{setVerificationPending(false);setVerificationCode('');setMessage('');}}>Volver al inicio de sesión</button></div></form> : <><form onSubmit={submit} className="auth-form"><label>Correo electrónico<input required type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="tu@correo.com" /></label><label>Contraseña<input required type="password" minLength={8} autoComplete={mode === 'login' ? 'current-password' : 'new-password'} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Mínimo 8 caracteres" /></label>
       {message && <div className="notice">{message}</div>}<button className="button button-primary button-full" disabled={busy}>{busy ? 'Un momento…' : mode === 'login' ? 'Iniciar sesión' : 'Crear cuenta'} <ArrowUpRight size={16} /></button></form>
-    <div className="auth-switch">{mode === 'login' ? '¿Primera vez aquí?' : '¿Ya tienes una cuenta?'} <button onClick={() => { setMode(mode === 'login' ? 'signup' : 'login'); setMessage(''); }}>{mode === 'login' ? 'Crear cuenta' : 'Iniciar sesión'}</button></div></>}<div className="auth-secure"><span className="secure-dot" /> Acceso protegido por Neon</div></div></section></main>;
+    {canSignUp&&<div className="auth-switch">{mode === 'login' ? '¿Primera vez aquí?' : '¿Ya tienes una cuenta?'} <button type="button" onClick={() => { setMode(mode === 'login' ? 'signup' : 'login'); setMessage(''); }}>{mode === 'login' ? 'Crear cuenta' : 'Iniciar sesión'}</button></div>}</>}<div className="auth-secure"><span className="secure-dot" /> Acceso protegido por Neon</div></div></section></main>;
+}
+
+function AccessHoldScreen({ status, mode, onSignOut }: { status: InstallationAccess['status'] | 'unapproved' | null; mode: InstallationMode; onSignOut: () => void }) {
+  const title = status === 'pending' ? 'Solicitud pendiente' : status === 'revoked' ? 'Acceso revocado' : 'Acceso no autorizado';
+  const message = status === 'pending'
+    ? 'Tu cuenta fue registrada. El superadministrador debe aprobarla antes de que puedas administrar un negocio.'
+    : mode === 'personal'
+      ? 'Esta instalación está configurada para uso personal. El propietario debe autorizar esta cuenta desde Neon.'
+      : 'El superadministrador de esta instalación debe aprobar tu cuenta para continuar.';
+  return <main className="center-loader"><section className="panel" style={{ maxWidth: 520, padding: 32, textAlign: 'center' }}><span className="brand-mark"><Store size={20}/></span><h1>{title}</h1><p>{message}</p><button className="button button-outline" onClick={onSignOut}>Cerrar sesión</button></section></main>;
+}
+
+function AccessAdminPage({ mode, onModeChanged, showToast, setError }: { mode: InstallationMode; onModeChanged: (mode: InstallationMode) => void; showToast: (message: string) => void; setError: (message: string) => void }) {
+  const [rows, setRows] = useState<{user_id:string;email:string;status:'pending'|'approved'|'revoked';role:'owner'|'admin';created_at:string}[]>([]);
+  const [busyUser, setBusyUser] = useState('');
+  const [loadingRows, setLoadingRows] = useState(true);
+  const load = useCallback(async () => {
+    if (!neon) return;
+    setLoadingRows(true);
+    const { data, error } = await neon.from('installation_access').select('user_id,email,status,role,created_at').order('created_at', { ascending: false });
+    if (error) setError(error.message);
+    else setRows((data || []) as typeof rows);
+    setLoadingRows(false);
+  }, [setError]);
+  useEffect(() => { void load(); }, [load]);
+  const changeMode = async (next: InstallationMode) => {
+    if (!neon || next === mode) return;
+    const { error } = await neon.rpc('admin_set_installation_mode', { p_mode: next });
+    if (error) { setError(error.message); return; }
+    onModeChanged(next);
+    showToast(next === 'personal' ? 'Modo personal activado.' : 'Modo SaaS educativo activado.');
+  };
+  const actOnUser = async (userId: string, action: 'approve'|'revoke') => {
+    if (!neon) return;
+    setBusyUser(userId);
+    const { error } = await neon.rpc(action === 'approve' ? 'admin_approve_installation_user' : 'admin_revoke_installation_user', { p_user_id: userId });
+    if (error) setError(error.message);
+    else { showToast(action === 'approve' ? 'Cuenta aprobada.' : 'Acceso revocado.'); await load(); }
+    setBusyUser('');
+  };
+  return <><PageHeading eyebrow="ADMINISTRACIÓN DE LA INSTALACIÓN" title="Accesos" description="Elige quién puede administrar un negocio en esta instalación."/><section className="panel" style={{ marginBottom: 20 }}><div className="table-toolbar"><div><strong className="table-title">Modo de acceso</strong><p>{mode === 'personal' ? 'Solo las cuentas autorizadas por el propietario pueden usar esta instalación.' : 'Las cuentas nuevas pueden solicitar acceso y esperan aprobación.'}</p></div><div className="modal-actions"><button className={`button ${mode==='personal'?'button-primary':'button-outline'}`} onClick={()=>void changeMode('personal')}>Personal</button><button className={`button ${mode==='saas'?'button-primary':'button-outline'}`} onClick={()=>void changeMode('saas')}>SaaS educativo</button></div></div></section><section className="panel"><div className="table-toolbar"><div><strong className="table-title">Cuentas de la instalación</strong><p>La autorización se aplica también en la base de datos.</p></div><button className="button button-outline" onClick={()=>void load()} disabled={loadingRows}>Actualizar</button></div>{loadingRows?<div className="empty-state">Cargando cuentas…</div>:rows.length?<div className="table-scroll"><table><thead><tr><th>CUENTA</th><th>CORREO</th><th>ESTADO</th><th>ROL</th><th>ACCIÓN</th></tr></thead><tbody>{rows.map((row)=><tr key={row.user_id}><td><code>{row.user_id}</code></td><td>{row.email||'—'}</td><td>{row.status==='approved'?'Aprobada':row.status==='pending'?'Pendiente':'Revocada'}</td><td>{row.role==='admin'?'Superadmin':'Negocio'}</td><td>{row.status==='pending'&&mode==='saas'?<button className="button button-small button-primary" disabled={busyUser===row.user_id} onClick={()=>void actOnUser(row.user_id,'approve')}>Aprobar</button>:row.status==='approved'&&row.role!=='admin'?<button className="button button-small button-outline" disabled={busyUser===row.user_id} onClick={()=>void actOnUser(row.user_id,'revoke')}>Revocar</button>:<span className="muted">—</span>}</td></tr>)}</tbody></table></div>:<div className="empty-state"><span className="empty-icon"><Users size={23}/></span><strong>No hay otras cuentas</strong><p>Las solicitudes de acceso aparecerán aquí cuando el modo SaaS educativo esté activo.</p></div>}</section></>;
 }
 
 function SetupScreen() {
@@ -376,6 +421,10 @@ export default function App() {
   const isPublic = window.location.pathname.startsWith('/catalogo/');
   const [userId, setUserId] = useState<string | null>(null);
   const [authReady, setAuthReady] = useState(false);
+  const [installationConfig, setInstallationConfig] = useState<InstallationConfig | null>(null);
+  const [installationConfigReady, setInstallationConfigReady] = useState(false);
+  const [installationAccess, setInstallationAccess] = useState<InstallationAccess | null>(null);
+  const [accessChecked, setAccessChecked] = useState(false);
   const [business, setBusiness] = useState<Business | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
@@ -396,15 +445,42 @@ export default function App() {
   const [period, setPeriod] = useState<'7' | '30' | 'all'>('7');
 
   useEffect(() => {
-    if (!neon) { setAuthReady(true); return; }
-    neon.auth.getSession().then(({ data }) => { setUserId(data.session?.user.id || null); setAuthReady(true); });
-    const { data: listener } = neon.auth.onAuthStateChange((_event, session) => setUserId(session?.user.id || null));
+    if (!neon) { setAuthReady(true); setInstallationConfigReady(true); return; }
+    const client = neon;
+    client.auth.getSession().then(async ({ data }) => {
+      setUserId(data.session?.user.id || null);
+      setAuthReady(true);
+      const config = await client.rpc('get_installation_config');
+      if (config.error) setError(config.error.message);
+      else setInstallationConfig(config.data as InstallationConfig);
+      setInstallationConfigReady(true);
+    }).catch((cause: unknown) => {
+      setError(cause instanceof Error ? cause.message : 'No se pudo cargar la configuración de acceso.');
+      setAuthReady(true); setInstallationConfigReady(true);
+    });
+    const { data: listener } = client.auth.onAuthStateChange((_event, session) => setUserId(session?.user.id || null));
     return () => listener.subscription.unsubscribe();
   }, []);
 
   const loadWorkspace = useCallback(async () => {
     if (!neon || !userId) return;
     setLoading(true); setError('');
+    const { data: accessData, error: accessError } = await neon.rpc('get_my_installation_access');
+    if (accessError) {
+      setError(accessError.message); setAccessChecked(true); setLoading(false); return;
+    }
+    let access = accessData as InstallationAccess | null;
+    if (!access && installationConfig?.access_mode === 'saas') {
+      const request = await neon.rpc('request_installation_access');
+      if (request.error) {
+        setError(request.error.message); setAccessChecked(true); setLoading(false); return;
+      }
+      access = { status: request.data as InstallationAccess['status'], role: 'owner' };
+    }
+    setInstallationAccess(access); setAccessChecked(true);
+    if (!access || access.status !== 'approved') {
+      setBusiness(null); setProducts([]); setCategories([]); setSales([]); setCustomers([]); setPublicOrders([]); setLoading(false); return;
+    }
     let { data: shop, error: shopError } = await neon.from('businesses').select('*').eq('owner_user_id', userId).maybeSingle();
     if (shopError) { setError(shopError.message); setLoading(false); return; }
     if (!shop) {
@@ -424,11 +500,22 @@ export default function App() {
     ]);
     if (productError || saleError || categoryError || customerError || orderError) setError(productError?.message || saleError?.message || categoryError?.message || customerError?.message || orderError?.message || 'No se pudieron cargar los datos.');
     setProducts((productRows || []) as Product[]); setSales((saleRows || []) as Sale[]); setCategories((categoryRows || []) as Category[]);setCustomers((customerRows||[]) as Customer[]);setPublicOrders((orderRows||[]) as PublicOrder[]);setLoading(false);
-  }, [userId]);
+  }, [userId, installationConfig?.access_mode]);
 
-  useEffect(() => { if (userId) void loadWorkspace(); else { setBusiness(null); setProducts([]); setCategories([]); setSales([]);setCustomers([]);setPublicOrders([]); } }, [userId, loadWorkspace]);
+  useEffect(() => { if (userId) { setAccessChecked(false); void loadWorkspace(); } else { setInstallationAccess(null); setAccessChecked(false); setBusiness(null); setProducts([]); setCategories([]); setSales([]);setCustomers([]);setPublicOrders([]); } }, [userId, loadWorkspace]);
   useEffect(() => { if (toast) { const timer = window.setTimeout(() => setToast(''), 3200); return () => window.clearTimeout(timer); } }, [toast]);
   useEffect(() => { if (business) { document.documentElement.style.setProperty('--brand', business.primary_color); document.documentElement.style.setProperty('--brand-soft', business.secondary_color); } }, [business]);
+
+  const signOut=async()=>{
+    if(!neon||loggingOut)return;
+    setLoggingOut(true);setError('');
+    try{
+      const {error:signOutError}=await neon.auth.signOut();
+      if(signOutError){setError(signOutError.message);return;}
+      setUserId(null);setInstallationAccess(null);setAccessChecked(false);setBusiness(null);setProducts([]);setCategories([]);setSales([]);setCustomers([]);setPublicOrders([]);setCart([]);setReceipt(null);setProductModal(false);setEditingProduct(null);setMobileNavOpen(false);setLoading(false);
+    }catch(error){setError(error instanceof Error?error.message:'No se pudo cerrar la sesión.');}
+    finally{setLoggingOut(false);}
+  };
 
   const activeProducts = products.filter((p) => p.is_active);
   const filteredProducts = products.filter((p) => p.name.toLowerCase().includes(query.toLowerCase()));
@@ -450,9 +537,11 @@ export default function App() {
   if (otherUnits > 0) bestSellers.push({ name: 'Demás productos', count: otherUnits, percentage: otherUnits / totalUnitsSold * 100 });
 
   if (isPublic) return <PublicCatalog />;
-  if (!authReady) return <div className="center-loader">Preparando tu espacio…</div>;
+  if (!authReady || !installationConfigReady) return <div className="center-loader">Preparando tu espacio…</div>;
   if (!isNeonConfigured) return <SetupScreen />;
-  if (!userId) return <AuthScreen onAuthenticated={setUserId} />;
+  if (!userId) return <AuthScreen onAuthenticated={setUserId} canSignUp={installationConfig?.access_mode === 'saas' || !installationConfig?.initialized} />;
+  if (!accessChecked) return <div className="center-loader">Comprobando autorización…</div>;
+  if (!installationAccess || installationAccess.status !== 'approved') return <AccessHoldScreen status={installationAccess?.status || 'unapproved'} mode={installationConfig?.access_mode || 'personal'} onSignOut={() => void signOut()} />;
 
   const showToast = (message: string) => setToast(message);
   const addCategory = async (name: string): Promise<Category | null> => {
@@ -505,21 +594,12 @@ export default function App() {
     await loadWorkspace();
     showToast(status==='confirmed'?'Pedido confirmado.':status==='completed'?'Pedido marcado como completado.':'Pedido cancelado.');
   };
-  const signOut=async()=>{
-    if(!neon||loggingOut)return;
-    setLoggingOut(true);setError('');
-    try{
-      const {error:signOutError}=await neon.auth.signOut();
-      if(signOutError){setError(signOutError.message);return;}
-      setUserId(null);setBusiness(null);setProducts([]);setCategories([]);setSales([]);setCustomers([]);setPublicOrders([]);setCart([]);setReceipt(null);setProductModal(false);setEditingProduct(null);setMobileNavOpen(false);setLoading(false);
-    }catch(error){setError(error instanceof Error?error.message:'No se pudo cerrar la sesión.');}
-    finally{setLoggingOut(false);}
-  };
+  const visibleNavItems = navItems.filter((item) => item.id !== 'access' || installationAccess.role === 'admin');
 
   return <div className="app-shell">
     <aside className={`sidebar ${mobileNavOpen ? 'sidebar-open' : ''}`}><div className="sidebar-top"><a className="logo-lockup" href="#dashboard"><span className="brand-mark"><Store size={19} /></span><span>mini<span className="logo-light">pos</span><small>ESPACIO DE NEGOCIO</small></span></a><button className="icon-button mobile-close" onClick={() => setMobileNavOpen(false)} aria-label="Cerrar menú"><X size={19} /></button></div>
       <div className="side-business"><span className="business-avatar">{business?.name.slice(0, 1).toUpperCase() || 'M'}</span><span><strong>{business?.name || 'Mi negocio'}</strong><small>Plan emprendedor</small></span><ChevronDown size={15} /></div>
-      <div className="nav-caption">MENÚ PRINCIPAL</div><nav className="main-nav">{navItems.map(({ id, label, icon: Icon }) => <button key={id} className={`nav-link ${page === id ? 'selected' : ''}`} onClick={() => { setPage(id); setMobileNavOpen(false); }}><span className="nav-icon"><Icon size={17} strokeWidth={1.9} /></span><span>{label}</span>{id === 'sale' && cart.length > 0 && <i>{cart.reduce((n, row) => n + row.quantity, 0)}</i>}{id==='publicOrders'&&publicOrders.filter((order)=>order.status==='pending').length>0&&<i>{publicOrders.filter((order)=>order.status==='pending').length}</i>}</button>)}</nav>
+      <div className="nav-caption">MENÚ PRINCIPAL</div><nav className="main-nav">{visibleNavItems.map(({ id, label, icon: Icon }) => <button key={id} className={`nav-link ${page === id ? 'selected' : ''}`} onClick={() => { setPage(id); setMobileNavOpen(false); }}><span className="nav-icon"><Icon size={17} strokeWidth={1.9} /></span><span>{label}</span>{id === 'sale' && cart.length > 0 && <i>{cart.reduce((n, row) => n + row.quantity, 0)}</i>}{id==='publicOrders'&&publicOrders.filter((order)=>order.status==='pending').length>0&&<i>{publicOrders.filter((order)=>order.status==='pending').length}</i>}</button>)}</nav>
       <div className="sidebar-bottom"><div className="help-card"><strong>Un paso a la vez</strong><p>Tu negocio, organizado y listo para crecer.</p></div><button className="nav-link logout-link" disabled={loggingOut} onClick={() => void signOut()}><LogOut size={18} /><span>{loggingOut?'Cerrando sesión…':'Cerrar sesión'}</span></button><small className="sidebar-version">MINI POS · EDICIÓN REGALO</small></div>
     </aside>
     {mobileNavOpen && <button className="nav-backdrop" onClick={() => setMobileNavOpen(false)} aria-label="Cerrar menú" />}
@@ -539,6 +619,7 @@ export default function App() {
         {page === 'publicOrders' && <PublicOrdersPage orders={publicOrders} sales={sales} customers={customers} currencySymbol={business?.currency_symbol||'C$'} onStatus={updatePublicOrderStatus} />}
         {page === 'customers' && business && <CustomersPage businessId={business.id} customers={customers} orders={publicOrders} onSaved={(customer,isNew)=>{setCustomers((items)=>isNew?[customer,...items].sort((a,b)=>a.name.localeCompare(b.name,'es')):items.map((item)=>item.id===customer.id?customer:item));showToast(isNew?'Cliente agregado.':'Cliente actualizado.');}} />}
         {page === 'brand' && business && <BrandPage business={business} onSaved={(b) => { setBusiness(b); showToast('La marca del negocio se guardó.'); }} setError={setError} />}
+        {page === 'access' && installationAccess.role === 'admin' && <AccessAdminPage mode={installationConfig?.access_mode || 'personal'} onModeChanged={(mode) => setInstallationConfig((current) => current ? { ...current, access_mode: mode } : current)} showToast={showToast} setError={setError} />}
       </div>
     </main>
     {productModal && business && <ProductModal businessId={business.id} product={editingProduct} categories={categories} onAddCategory={addCategory} onClose={() => setProductModal(false)} onSaved={async () => { setProductModal(false); await loadWorkspace(); showToast(editingProduct ? 'Producto actualizado.' : 'Producto agregado.'); }} setError={setError} />}

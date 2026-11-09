@@ -37,6 +37,56 @@ También puedes ejecutar el contenido desde el SQL Editor de Neon. Aplica esta m
 
 La migración instala las tablas de negocio, restricciones, RLS y funciones SQL usadas para consultar el catálogo público y confirmar una venta. Depende de la configuración de Neon Auth/Data API y de los roles y funciones que Neon expone en ese entorno; confirma esos requisitos con la migración y prueba su ejecución en una branch de desarrollo antes de producción.
 
+### Control de acceso: modo personal y modo SaaS educativo
+
+La migración `database/migrations/202611080001_installation_access_control.sql` añade el control de acceso para toda la instalación. Inclúyela al final de la secuencia de migraciones, después de `202611070005_link_customers_to_sales.sql`. No edites ni vuelvas a ejecutar migraciones anteriores.
+
+- **Personal** es el modo predeterminado. Solo el usuario inicial registrado explícitamente como administrador puede usar la app. Después de inicializar la instalación, el formulario de registro se oculta. Las cuentas creadas directamente en Neon Auth no pueden crear un negocio ni consultar datos privados.
+- **SaaS educativo** permite que una cuenta se registre y solicite acceso. El superadministrador la aprueba desde **Accesos**. Cada cuenta aprobada recibe su propio negocio; `owner_user_id` mantiene la relación de un usuario por negocio.
+- El catálogo y el envío de pedidos permanecen públicos; las políticas de aprobación protegen las funciones privadas de administración.
+
+Neon Auth todavía permite crear cuentas directamente, incluso cuando la app oculta el registro. Por tanto, el modo personal controla el uso de la aplicación y sus datos, pero no evita que Neon Auth almacene cuentas que no han sido autorizadas. Para impedir esas altas en el proveedor se necesita un servicio de autenticación con registro restringido.
+
+#### Inicializar el administrador propietario
+
+1. Despliega la app con las variables de Neon y abre la pantalla de acceso. Antes de inicializar, **Crear cuenta** estará disponible para que el propietario registre su cuenta inicial.
+2. Confirma el correo si Neon Auth lo solicita. No compartas el enlace público hasta completar el paso siguiente. Aunque otra persona cree una cuenta antes, no obtendrá acceso a los datos ni podrá convertirse en administradora.
+3. Desde el SQL Editor conectado a la branch correcta, identifica el ID de la cuenta que será propietaria:
+
+   ```sql
+   select id, email from neon_auth."user" order by "createdAt";
+   ```
+
+4. Verifica el correo/ID y ejecuta como propietario de la base de datos, sustituyendo el UUID por el ID confirmado:
+
+   ```sql
+   insert into public.installation_access (user_id, email, status, role, reviewed_at)
+   values ('UUID_CONFIRMADO', 'propietario@ejemplo.com', 'approved', 'admin', now())
+   on conflict (user_id) do update
+   set email = excluded.email, status = 'approved', role = 'admin', reviewed_at = now();
+
+   update public.installation_settings
+   set access_mode = 'personal', initialized = true, updated_at = now()
+   where singleton;
+   ```
+
+5. Cierra sesión y vuelve a entrar. La cuenta administradora podrá crear su negocio; en modo personal, las cuentas de rol `owner` sin el rol administrador no tienen acceso.
+
+No uses una regla automática de “primer usuario registrado = admin”. La promoción de administrador debe hacerse con acceso SQL de propietario o con una acción posterior autorizada por el superadmin. Si pierdes el acceso administrativo, el dueño de Neon puede restaurar el rol desde SQL.
+
+#### Aprobar cuentas en modo SaaS educativo
+
+1. El administrador entra a **Accesos** y cambia el modo a **SaaS educativo**.
+2. La pantalla de registro queda disponible. Cuando una cuenta inicia sesión, se registra como pendiente y no recibe acceso a tablas ni funciones privadas.
+3. En **Accesos**, el administrador revisa la cuenta y pulsa **Aprobar**. El usuario vuelve a iniciar sesión y la app crea su negocio privado.
+4. El administrador puede revocar una cuenta desde esa misma pantalla. La revocación bloquea futuras lecturas y escrituras privadas; no borra automáticamente sus registros, que deben respaldarse o eliminarse deliberadamente.
+
+El correo que aparece en la lista ayuda a reconocer la solicitud; el permiso está vinculado al ID de usuario de Neon Auth. No compartas credenciales de superadministrador.
+
+#### Migrar una instalación ya existente
+
+La nueva migración conserva los propietarios actuales como usuarios aprobados, pero no promueve a ninguno automáticamente a administrador. Antes de publicar la nueva app, identifica al responsable y asígnale el rol `admin` con el procedimiento anterior. Si la instalación existente debe seguir permitiendo a sus negocios actuales, selecciona **SaaS educativo** antes de volver a abrirla; si solo la usará su propietario, conserva **Personal**. En modo personal, únicamente los usuarios aprobados con rol de administrador pueden entrar.
+
 ### Añadir imágenes de producto a una instalación existente
 
 Después de desplegar la versión que incluye imágenes, aplica una sola vez `database/migrations/202611040001_product_images.sql` en el SQL Editor de Neon, conectado a la misma branch configurada en Vercel. Esta migración agrega `products.image_url` y actualiza la función del catálogo público; no vuelvas a ejecutar la migración inicial.
@@ -72,7 +122,7 @@ Para aceptar pedidos desde el catálogo público, aplica `database/migrations/20
    npm run dev
    ```
 
-6. Crea una cuenta de prueba y recorre el flujo de la app.
+6. En modo personal, registra la cuenta del propietario, inicialízala como administrador con el procedimiento anterior y después prueba el flujo. Para probar aprobaciones, cambia una instalación de prueba a modo SaaS educativo.
 
 No guardes datos reales en un entorno de prueba. Mantén `.env.local` fuera de Git.
 
@@ -88,7 +138,7 @@ No guardes datos reales en un entorno de prueba. Mantén `.env.local` fuera de G
 
    Ambas deben corresponder a la misma branch de Neon.
 
-4. Despliega la aplicación.
+4. Despliega la aplicación. En una instalación nueva, completa el procedimiento de inicialización del administrador antes de compartir la URL.
 5. Añade el dominio de Vercel a los orígenes/dominios permitidos en Neon Auth.
 6. Vuelve a desplegar si cambiaste variables de entorno y comprueba registro, inicio de sesión y las funciones principales desde el dominio publicado.
 
@@ -109,7 +159,7 @@ La subida desde `npm run dev` no incluye la función `/api` de Vercel. Para prob
 1. En Cloudflare Turnstile crea un widget para los dominios de producción y Preview que usarás. Su sitekey es pública; su secret key es privada.
 2. En Vercel configura `VITE_TURNSTILE_SITE_KEY` con la sitekey y `TURNSTILE_SECRET_KEY` con la secret key. No uses el prefijo `VITE_` para la clave secreta.
 3. Agrega `DATABASE_URL` como variable secreta de servidor en Vercel. Copia la conexión PostgreSQL de la branch correcta de Neon; nunca la expongas al navegador ni la pongas en `.env.example`.
-4. Aplica las migraciones de pedidos, clientes y ventas en orden y en esa misma branch: `202611050004_public_catalog_orders.sql`, `202611060001_public_order_details.sql`, `202611070001_accept_google_maps_query_urls.sql`, `202611070002_public_orders_to_sales.sql`, `202611070003_manual_customer_management.sql`, `202611070004_preserve_customers_and_confirm_order_completion.sql` y `202611070005_link_customers_to_sales.sql`.
+4. Aplica las migraciones de pedidos, clientes, ventas y control de acceso en orden y en esa misma branch: `202611050004_public_catalog_orders.sql`, `202611060001_public_order_details.sql`, `202611070001_accept_google_maps_query_urls.sql`, `202611070002_public_orders_to_sales.sql`, `202611070003_manual_customer_management.sql`, `202611070004_preserve_customers_and_confirm_order_completion.sql`, `202611070005_link_customers_to_sales.sql` y `202611080001_installation_access_control.sql`.
 5. Despliega de nuevo. El formulario comprueba el reto en el servidor antes de crear un pedido; la función de Neon ya no acepta llamadas públicas directas.
 6. El cliente puede indicar dirección y opcionalmente compartir un enlace HTTPS de Google Maps. El producto admite una etiqueta opcional de variante/presentación. Ambos datos quedan guardados como información del cliente/pedido y se incluyen en el texto preparado para WhatsApp.
 
@@ -164,6 +214,8 @@ Si la función y el permiso existen, pero sigue el error, actualizar o volver a 
 - Existe un Vercel Blob store público conectado al proyecto y su `BLOB_READ_WRITE_TOKEN` está disponible para Production/Preview.
 - La migración de imágenes se aplicó a la misma branch de Neon usada por la app.
 - Neon Auth permite el dominio de producción.
+- `202611080001_installation_access_control.sql` está aplicada y el propietario inicial quedó configurado como administrador.
+- El modo de acceso elegido (Personal o SaaS educativo) coincide con quién administrará las altas.
 - RLS permanece habilitado y las políticas y funciones de la migración están presentes.
 - No hay contraseñas SQL, claves administrativas ni tokens secretos en Git o variables `VITE_*`.
 - Se probó el flujo de registro, marca, productos, promoción, venta, dashboard, catálogo y comprobante.

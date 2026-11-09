@@ -2,17 +2,21 @@
 
 ## Autenticación y acceso a datos
 
-Neon Auth gestiona registro, inicio de sesión y sesiones. Neon Data API recibe las peticiones del navegador y valida los JWT. Las tablas de negocio deben conservar RLS y sus políticas, que limitan los datos del negocio a la cuenta propietaria indicada por `auth.user_id()`.
+Neon Auth gestiona registro, inicio de sesión y sesiones. Neon Data API recibe las peticiones del navegador y valida los JWT. La migración `202611080001_installation_access_control.sql` añade el estado de autorización por usuario y los modos `personal` y `saas`. Las políticas RLS y las funciones privilegiadas deben comprobar tanto la autorización aprobada como la propiedad indicada por `auth.user_id()`.
+
+La cuenta administradora inicial se asigna con una acción SQL del propietario de la base de datos. No se debe promover automáticamente al primer usuario que se registre. En modo `personal`, solo administradores aprobados pueden usar la instalación; en modo `saas`, el superadmin debe aprobar cada cuenta antes de que pueda crear o consultar un negocio.
+
+Neon Auth permite registros directos por defecto y no ofrece actualmente una opción integrada para restringirlos. Ocultar **Crear cuenta** es solo una medida de interfaz. La tabla de autorización impide que cuentas no aprobadas usen los datos privados, pero no impide que Neon Auth almacene esas cuentas.
 
 La política de orígenes permitidos de Neon Auth debe incluir los dominios desde los que se usa la app, como `http://localhost:5173` y el dominio publicado. Usa solo los orígenes necesarios.
 
 ## Aislamiento por instalación
 
-El modelo previsto es un proyecto Neon por emprendedor/despliegue. RLS sigue siendo importante: dentro de un proyecto, restringe los registros al usuario propietario del negocio. No elimines ni debilites las políticas RLS para resolver errores de permisos.
+El modelo previsto es un proyecto Neon por emprendedor/despliegue. Una instalación también puede ejecutarse en modo SaaS educativo, donde el superadmin aprueba varios usuarios. `businesses.owner_user_id` es único, por lo que cada usuario puede tener un solo negocio. RLS sigue siendo obligatorio en ambos modos; no elimines ni debilites las políticas para resolver errores de permisos.
 
 ## Catálogo público
 
-El catálogo debe publicarse mediante `get_public_catalog(slug)`, que devuelve solo los campos públicos de marca y productos activos. La lectura pública de la tabla completa de negocios, productos, ventas o detalles de venta no debe habilitarse para facilitar el catálogo.
+El catálogo debe publicarse mediante `get_public_catalog(slug)`, que devuelve solo los campos públicos de marca y productos activos. La migración de control de acceso no añade acceso anónimo a las tablas privadas ni cambia el alcance de esa función. La lectura pública de la tabla completa de negocios, productos, ventas o detalles de venta no debe habilitarse para facilitar el catálogo.
 
 ## Registro de ventas
 
