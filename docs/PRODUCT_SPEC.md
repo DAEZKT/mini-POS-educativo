@@ -12,13 +12,14 @@ React y Vite para la app; Neon Auth para las cuentas; Neon Data API para las con
 
 1. **Cuenta:** registro e inicio de sesión mediante correo y contraseña con Neon Auth.
 2. **Marca:** nombre, colores principal y secundario, dirección opcional y teléfono opcional.
-3. **Productos:** nombre, descripción opcional, precio normal, estado activo/inactivo y promoción opcional.
+3. **Productos:** crear, consultar, editar y eliminar productos. La eliminación exige copiar el nombre y se bloquea si aparece en una venta o pedido web.
 4. **Promociones:** precio fijo menor que el precio normal y un interruptor activo/inactivo. No hay fechas ni vencimiento automático.
 5. **Venta inmediata:** seleccionar productos activos, asociar un cliente opcional y registrar una venta. Las cantidades son unidades enteras positivas.
-6. **Historial de ventas:** consultar ventas, corregir el cliente asociado y anular con motivo sin borrar ni reutilizar el consecutivo. Los productos, cantidades y precios de una venta confirmada no se editan.
-7. **Dashboard:** total y número de ventas vigentes para los últimos 7 días, 30 días o todo el historial; productos más vendidos por unidades. Las ventas anuladas no se contabilizan.
-8. **Catálogo público:** página por negocio, con marca y productos activos. No muestra información de ventas.
-9. **Documentos:** comprobante de venta y catálogo imprimible. Se usa la impresión del navegador para guardar en PDF.
+6. **Clientes:** crear, consultar y editar clientes. Se pueden eliminar solo si no están asociados a ventas o pedidos web, tras confirmar copiando el nombre exacto.
+7. **Historial de ventas:** consultar ventas, corregir el cliente asociado y anular con motivo sin borrar ni reutilizar el consecutivo. Los productos, cantidades y precios de una venta confirmada no se editan.
+8. **Dashboard:** total y número de ventas vigentes para los últimos 7 días, 30 días o todo el historial; productos más vendidos por unidades. Las ventas anuladas no se contabilizan.
+9. **Catálogo público:** página por negocio, con marca y productos activos. No muestra información de ventas.
+10. **Documentos:** comprobante de venta y catálogo imprimible. Se usa la impresión del navegador para guardar en PDF.
 
 ## Reglas de negocio
 

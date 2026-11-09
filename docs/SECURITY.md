@@ -24,6 +24,8 @@ El catálogo debe publicarse mediante `get_public_catalog(slug)`, que devuelve s
 
 La migración `202611080002_sales_maintenance.sql` agrega funciones protegidas para corregir el cliente asociado o anular una venta con motivo. La anulación conserva el consecutivo y los detalles; no borra el historial y los reportes excluyen las ventas con estado `voided`. No se permite editar directamente los productos, cantidades ni precios de una venta existente.
 
+La migración `202611080003_confirmed_record_deletion.sql` permite eliminar productos y clientes solo si no tienen ventas ni pedidos web asociados. La app pide copiar el nombre exacto, y los RPC vuelven a comprobar ese nombre, la propiedad del negocio, la autorización vigente y las referencias antes de borrar. La interfaz mejora la confirmación, pero la regla de integridad está en PostgreSQL.
+
 ## Variables y credenciales
 
 - `VITE_NEON_AUTH_URL` y `VITE_NEON_DATA_API_URL` son direcciones de servicios que necesita el cliente web; no son contraseñas SQL.

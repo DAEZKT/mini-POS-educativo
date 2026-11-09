@@ -9,7 +9,7 @@ Mini POS es una aplicación educativa para que un emprendedor gestione su marca,
 - Inicio de sesión con Neon Auth y dos modos de autorización: personal (propietario único) y SaaS educativo (aprobación por superadmin).
 - Datos en PostgreSQL mediante Neon Data API, protegidos con Row Level Security (RLS).
 - Configuración de marca: nombre, colores, dirección opcional y teléfono opcional.
-- Productos activos e inactivos.
+- CRUD de productos y clientes; la eliminación exige copiar el nombre y se bloquea si hay ventas o pedidos web vinculados.
 - Precio promocional fijo, con interruptor de activación; no tiene fechas ni vencimiento automático.
 - Ventas inmediatas con cantidades enteras positivas.
 - Historial de ventas con corrección del cliente y anulación auditable que conserva el consecutivo y se excluye del resumen.
