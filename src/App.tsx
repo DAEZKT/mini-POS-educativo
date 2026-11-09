@@ -16,7 +16,7 @@ type Page = 'dashboard' | 'products' | 'categories' | 'sale' | 'history' | 'publ
 type CartRow = { product: Product; quantity: number };
 type InstallationMode = 'personal' | 'saas';
 type InstallationConfig = { access_mode: InstallationMode; initialized: boolean };
-type InstallationAccess = { status: 'pending' | 'approved' | 'revoked'; role: 'owner' | 'admin' };
+type InstallationAccess = { status: 'pending' | 'approved' | 'revoked' | 'rejected'; role: 'owner' | 'admin' };
 type DeleteResult = { ok: boolean; error?: string };
 
 declare global {
@@ -335,9 +335,11 @@ function AuthScreen({ onAuthenticated, canSignUp }: { onAuthenticated: (userId: 
 }
 
 function AccessHoldScreen({ status, mode, onSignOut }: { status: InstallationAccess['status'] | 'unapproved' | null; mode: InstallationMode; onSignOut: () => void }) {
-  const title = status === 'pending' ? 'Solicitud pendiente' : status === 'revoked' ? 'Acceso revocado' : 'Acceso no autorizado';
+  const title = status === 'pending' ? 'Solicitud pendiente' : status === 'revoked' ? 'Acceso revocado' : status === 'rejected' ? 'Solicitud rechazada' : 'Acceso no autorizado';
   const message = status === 'pending'
     ? 'Tu cuenta fue registrada. El superadministrador debe aprobarla antes de que puedas administrar un negocio.'
+    : status === 'rejected'
+      ? 'El superadministrador no aprobó esta solicitud. Contacta con el administrador de la instalación si necesitas más información.'
     : mode === 'personal'
       ? 'Esta instalación está configurada para uso personal. El propietario debe autorizar esta cuenta desde Neon.'
       : 'El superadministrador de esta instalación debe aprobar tu cuenta para continuar.';
@@ -345,7 +347,7 @@ function AccessHoldScreen({ status, mode, onSignOut }: { status: InstallationAcc
 }
 
 function AccessAdminPage({ mode, onModeChanged, showToast, setError }: { mode: InstallationMode; onModeChanged: (mode: InstallationMode) => void; showToast: (message: string) => void; setError: (message: string) => void }) {
-  const [rows, setRows] = useState<{user_id:string;email:string;status:'pending'|'approved'|'revoked';role:'owner'|'admin';created_at:string}[]>([]);
+  const [rows, setRows] = useState<{user_id:string;email:string;status:'pending'|'approved'|'revoked'|'rejected';role:'owner'|'admin';created_at:string}[]>([]);
   const [busyUser, setBusyUser] = useState('');
   const [loadingRows, setLoadingRows] = useState(true);
   const load = useCallback(async () => {
@@ -364,15 +366,16 @@ function AccessAdminPage({ mode, onModeChanged, showToast, setError }: { mode: I
     onModeChanged(next);
     showToast(next === 'personal' ? 'Modo personal activado.' : 'Modo SaaS educativo activado.');
   };
-  const actOnUser = async (userId: string, action: 'approve'|'revoke') => {
+  const actOnUser = async (userId: string, action: 'approve'|'reject'|'revoke'|'reconsider') => {
     if (!neon) return;
     setBusyUser(userId);
-    const { error } = await neon.rpc(action === 'approve' ? 'admin_approve_installation_user' : 'admin_revoke_installation_user', { p_user_id: userId });
+    const rpcName = { approve:'admin_approve_installation_user', reject:'admin_reject_installation_user', revoke:'admin_revoke_installation_user', reconsider:'admin_reconsider_installation_user' }[action];
+    const { error } = await neon.rpc(rpcName, { p_user_id: userId });
     if (error) setError(error.message);
-    else { showToast(action === 'approve' ? 'Cuenta aprobada.' : 'Acceso revocado.'); await load(); }
+    else { showToast(({approve:'Cuenta aprobada.',reject:'Solicitud rechazada.',revoke:'Acceso revocado.',reconsider:'Solicitud devuelta a pendiente.'})[action]); await load(); }
     setBusyUser('');
   };
-  return <><PageHeading eyebrow="ADMINISTRACIÓN DE LA INSTALACIÓN" title="Accesos" description="Elige quién puede administrar un negocio en esta instalación."/><section className="panel" style={{ marginBottom: 20 }}><div className="table-toolbar"><div><strong className="table-title">Modo de acceso</strong><p>{mode === 'personal' ? 'Solo las cuentas autorizadas por el propietario pueden usar esta instalación.' : 'Las cuentas nuevas pueden solicitar acceso y esperan aprobación.'}</p></div><div className="modal-actions"><button className={`button ${mode==='personal'?'button-primary':'button-outline'}`} onClick={()=>void changeMode('personal')}>Personal</button><button className={`button ${mode==='saas'?'button-primary':'button-outline'}`} onClick={()=>void changeMode('saas')}>SaaS educativo</button></div></div></section><section className="panel"><div className="table-toolbar"><div><strong className="table-title">Cuentas de la instalación</strong><p>La autorización se aplica también en la base de datos.</p></div><button className="button button-outline" onClick={()=>void load()} disabled={loadingRows}>Actualizar</button></div>{loadingRows?<div className="empty-state">Cargando cuentas…</div>:rows.length?<div className="table-scroll"><table><thead><tr><th>CUENTA</th><th>CORREO</th><th>ESTADO</th><th>ROL</th><th>ACCIÓN</th></tr></thead><tbody>{rows.map((row)=><tr key={row.user_id}><td><code>{row.user_id}</code></td><td>{row.email||'—'}</td><td>{row.status==='approved'?'Aprobada':row.status==='pending'?'Pendiente':'Revocada'}</td><td>{row.role==='admin'?'Superadmin':'Negocio'}</td><td>{row.status==='pending'&&mode==='saas'?<button className="button button-small button-primary" disabled={busyUser===row.user_id} onClick={()=>void actOnUser(row.user_id,'approve')}>Aprobar</button>:row.status==='approved'&&row.role!=='admin'?<button className="button button-small button-outline" disabled={busyUser===row.user_id} onClick={()=>void actOnUser(row.user_id,'revoke')}>Revocar</button>:<span className="muted">—</span>}</td></tr>)}</tbody></table></div>:<div className="empty-state"><span className="empty-icon"><Users size={23}/></span><strong>No hay otras cuentas</strong><p>Las solicitudes de acceso aparecerán aquí cuando el modo SaaS educativo esté activo.</p></div>}</section></>;
+  return <><PageHeading eyebrow="ADMINISTRACIÓN DE LA INSTALACIÓN" title="Accesos" description="Elige quién puede administrar un negocio en esta instalación."/><section className="panel" style={{ marginBottom: 20 }}><div className="table-toolbar"><div><strong className="table-title">Modo de acceso</strong><p>{mode === 'personal' ? 'Solo las cuentas autorizadas por el propietario pueden usar esta instalación.' : 'Las cuentas nuevas pueden solicitar acceso y esperan aprobación.'}</p></div><div className="modal-actions"><button className={`button ${mode==='personal'?'button-primary':'button-outline'}`} onClick={()=>void changeMode('personal')}>Personal</button><button className={`button ${mode==='saas'?'button-primary':'button-outline'}`} onClick={()=>void changeMode('saas')}>SaaS educativo</button></div></div></section><section className="panel"><div className="table-toolbar"><div><strong className="table-title">Cuentas de la instalación</strong><p>La autorización se aplica también en la base de datos.</p></div><button className="button button-outline" onClick={()=>void load()} disabled={loadingRows}>Actualizar</button></div>{loadingRows?<div className="empty-state">Cargando cuentas…</div>:rows.length?<div className="table-scroll"><table><thead><tr><th>CUENTA</th><th>CORREO</th><th>ESTADO</th><th>ROL</th><th>ACCIÓN</th></tr></thead><tbody>{rows.map((row)=><tr key={row.user_id}><td><code>{row.user_id}</code></td><td>{row.email||'—'}</td><td>{row.status==='approved'?'Aprobada':row.status==='pending'?'Pendiente':row.status==='rejected'?'Rechazada':'Revocada'}</td><td>{row.role==='admin'?'Superadmin':'Negocio'}</td><td>{row.status==='pending'&&mode==='saas'?<div className="access-row-actions"><button className="button button-small button-primary" disabled={busyUser===row.user_id} onClick={()=>void actOnUser(row.user_id,'approve')}>Aprobar</button><button className="button button-small button-danger-outline" disabled={busyUser===row.user_id} onClick={()=>void actOnUser(row.user_id,'reject')}>Rechazar</button></div>:row.status==='approved'&&row.role!=='admin'?<button className="button button-small button-outline" disabled={busyUser===row.user_id} onClick={()=>void actOnUser(row.user_id,'revoke')}>Revocar acceso</button>:row.status==='rejected'&&mode==='saas'?<button className="button button-small button-outline" disabled={busyUser===row.user_id} onClick={()=>void actOnUser(row.user_id,'reconsider')}>Reconsiderar</button>:<span className="muted">—</span>}</td></tr>)}</tbody></table></div>:<div className="empty-state"><span className="empty-icon"><Users size={23}/></span><strong>No hay otras cuentas</strong><p>Las solicitudes de acceso aparecerán aquí cuando el modo SaaS educativo esté activo.</p></div>}</section></>;
 }
 
 function ConfirmDeleteModal({ entityLabel, entityName, onCancel, onDelete }: { entityLabel:'producto'|'cliente'; entityName:string; onCancel:()=>void; onDelete:()=>Promise<DeleteResult> }) {

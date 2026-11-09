@@ -26,6 +26,8 @@ La migración `202611080002_sales_maintenance.sql` agrega funciones protegidas p
 
 La migración `202611080003_confirmed_record_deletion.sql` permite eliminar productos y clientes solo si no tienen ventas ni pedidos web asociados. La app pide copiar el nombre exacto, y los RPC vuelven a comprobar ese nombre, la propiedad del negocio, la autorización vigente y las referencias antes de borrar. La interfaz mejora la confirmación, pero la regla de integridad está en PostgreSQL.
 
+La migración `202611090001_reject_installation_access.sql` añade el estado `rejected` para las solicitudes que no se aprueban. Los usuarios rechazados no pasan las políticas RLS ni las comprobaciones de autorización. El superadmin puede devolver una solicitud rechazada a `pending` para reconsiderarla; revocar se reserva para una cuenta que ya fue aprobada.
+
 ## Variables y credenciales
 
 - `VITE_NEON_AUTH_URL` y `VITE_NEON_DATA_API_URL` son direcciones de servicios que necesita el cliente web; no son contraseñas SQL.
