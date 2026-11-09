@@ -22,6 +22,8 @@ El catálogo debe publicarse mediante `get_public_catalog(slug)`, que devuelve s
 
 `create_sale(items)` debe requerir una sesión autenticada, comprobar que cada producto activo pertenece al negocio del usuario, validar cantidades enteras positivas y calcular los importes a partir de los precios vigentes en la base de datos. Venta y detalles deben guardarse de forma transaccional para evitar registros parciales.
 
+La migración `202611080002_sales_maintenance.sql` agrega funciones protegidas para corregir el cliente asociado o anular una venta con motivo. La anulación conserva el consecutivo y los detalles; no borra el historial y los reportes excluyen las ventas con estado `voided`. No se permite editar directamente los productos, cantidades ni precios de una venta existente.
+
 ## Variables y credenciales
 
 - `VITE_NEON_AUTH_URL` y `VITE_NEON_DATA_API_URL` son direcciones de servicios que necesita el cliente web; no son contraseñas SQL.

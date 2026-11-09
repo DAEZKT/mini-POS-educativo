@@ -14,10 +14,11 @@ React y Vite para la app; Neon Auth para las cuentas; Neon Data API para las con
 2. **Marca:** nombre, colores principal y secundario, dirección opcional y teléfono opcional.
 3. **Productos:** nombre, descripción opcional, precio normal, estado activo/inactivo y promoción opcional.
 4. **Promociones:** precio fijo menor que el precio normal y un interruptor activo/inactivo. No hay fechas ni vencimiento automático.
-5. **Venta inmediata:** seleccionar productos activos y registrar una venta. Las cantidades son unidades enteras positivas.
-6. **Dashboard:** total y número de ventas para los últimos 7 días, 30 días o todo el historial; productos más vendidos por unidades.
-7. **Catálogo público:** página por negocio, con marca y productos activos. No muestra información de ventas.
-8. **Documentos:** comprobante de venta y catálogo imprimible. Se usa la impresión del navegador para guardar en PDF.
+5. **Venta inmediata:** seleccionar productos activos, asociar un cliente opcional y registrar una venta. Las cantidades son unidades enteras positivas.
+6. **Historial de ventas:** consultar ventas, corregir el cliente asociado y anular con motivo sin borrar ni reutilizar el consecutivo. Los productos, cantidades y precios de una venta confirmada no se editan.
+7. **Dashboard:** total y número de ventas vigentes para los últimos 7 días, 30 días o todo el historial; productos más vendidos por unidades. Las ventas anuladas no se contabilizan.
+8. **Catálogo público:** página por negocio, con marca y productos activos. No muestra información de ventas.
+9. **Documentos:** comprobante de venta y catálogo imprimible. Se usa la impresión del navegador para guardar en PDF.
 
 ## Reglas de negocio
 
@@ -27,6 +28,7 @@ React y Vite para la app; Neon Auth para las cuentas; Neon Data API para las con
 - El precio promocional debe ser mayor que cero y menor que el precio normal.
 - La base de datos calcula el importe de la venta a partir de los productos, precios vigentes y cantidades recibidas; no confía en el total calculado por el navegador.
 - El detalle de venta conserva el nombre, cantidad, precio normal, precio cobrado y promoción aplicada al momento de confirmar.
+- Una venta anulada se conserva con su motivo y consecutivo, pero se excluye del dashboard y del cálculo de productos más vendidos.
 - La cantidad debe ser un entero mayor que cero; no se admiten fracciones.
 - La moneda inicial está fija en córdobas nicaragüenses (NIO).
 - El catálogo público se entrega por una función SQL que solo devuelve campos públicos y productos activos.

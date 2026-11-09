@@ -98,6 +98,12 @@ export type Sale = {
   public_order_number?: number | null;
   sold_at: string;
   total_amount: number;
+  status: 'completed' | 'voided';
+  voided_at?: string | null;
+  voided_by?: string | null;
+  void_reason?: string | null;
+  customer_updated_at?: string | null;
+  customer_updated_by?: string | null;
   sale_items?: SaleItem[];
 };
 

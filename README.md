@@ -12,6 +12,7 @@ Mini POS es una aplicación educativa para que un emprendedor gestione su marca,
 - Productos activos e inactivos.
 - Precio promocional fijo, con interruptor de activación; no tiene fechas ni vencimiento automático.
 - Ventas inmediatas con cantidades enteras positivas.
+- Historial de ventas con corrección del cliente y anulación auditable que conserva el consecutivo y se excluye del resumen.
 - Dashboard e historial de ventas.
 - Catálogo público con los productos activos.
 - Comprobante de venta y catálogo que se pueden imprimir o guardar como PDF desde el navegador.
