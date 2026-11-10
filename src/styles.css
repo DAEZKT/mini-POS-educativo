@@ -169,3 +169,5 @@
 .receipt-customer{display:flex;justify-content:space-between;gap:8px;margin:12px 0;padding:8px 0;border-top:1px solid #eeedf2;border-bottom:1px solid #eeedf2;color:#595866;font-size:8px}.receipt-customer strong{color:#353448;text-align:right}.receipt-line{flex-wrap:wrap}.receipt-line>.receipt-promotion-label{flex-basis:100%;color:#a9833d;font-size:7px}.receipt-tax-note{margin:10px 0 0;color:#898896;text-align:center;font-size:7px;line-height:1.45}
 
 .dashboard-report-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}@media(max-width:650px){.dashboard-report-actions{justify-content:flex-end}.dashboard-report-actions .button{min-height:35px;padding:0 9px;font-size:9px}}
+
+.history-toolbar-tools{display:flex;align-items:center;gap:12px}.history-sales-search{width:min(310px,35vw)}@media(max-width:650px){.history-toolbar-tools{width:100%;flex-wrap:wrap}.history-sales-search{width:100%;max-width:none}.table-toolbar:has(.history-toolbar-tools){align-items:stretch;flex-direction:column;gap:11px}}
