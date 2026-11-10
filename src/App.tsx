@@ -11,6 +11,7 @@ import {
 import { isNeonConfigured, neon } from './lib/neon';
 import { Business, Category, Customer, formatDate, formatMoney, priceFor, Product, PublicOrder, PublicOrderStatus, Sale } from './lib/types';
 import { buildReceiptPdf } from './lib/receipt-pdf';
+import { buildBusinessReportPdf } from './lib/business-report-pdf';
 import { buildCatalogPdf, loadCatalogPdfImages } from './lib/catalog-pdf';
 
 type Page = 'dashboard' | 'products' | 'categories' | 'sale' | 'history' | 'publicOrders' | 'customers' | 'brand' | 'access';
@@ -702,7 +703,7 @@ export default function App() {
       <div className="content-wrap">
         {error && <div className="notice page-notice"><CircleHelp size={17} /><span>{error}</span><button onClick={() => setError('')}><X size={16} /></button></div>}
         {loading && <div className="loading-strip"><span /> Sincronizando información…</div>}
-        {page === 'dashboard' && <Dashboard business={business} sales={periodSales} total={totalRevenue} products={products} bestSellers={bestSellers} period={period} setPeriod={setPeriod} />}
+        {page === 'dashboard' && <Dashboard business={business} sales={periodSales} allSales={sales} customerCount={customers.length} total={totalRevenue} products={products} bestSellers={bestSellers} period={period} setPeriod={setPeriod} />}
         {page === 'products' && <ProductsPage products={filteredProducts} categories={categories} currencySymbol={business?.currency_symbol||'C$'} query={query} setQuery={setQuery} onAdd={() => { setEditingProduct(null); setProductModal(true); }} onEdit={(p) => { setEditingProduct(p); setProductModal(true); }} onToggle={async (product) => {
           if (!neon) return;
           const { error: e } = await neon.from('products').update({ is_active: !product.is_active }).eq('id', product.id);
@@ -727,9 +728,16 @@ function PageHeading({ eyebrow, title, description, action }: { eyebrow: string;
   return <div className="page-heading"><div><span className="eyebrow">{eyebrow}</span><h1>{title}</h1><p>{description}</p></div>{action}</div>;
 }
 
-function Dashboard({ business, sales, total, products, bestSellers, period, setPeriod }: { business: Business | null; sales: Sale[]; total: number; products: Product[]; bestSellers: {name:string;count:number;percentage:number}[]; period:'7'|'30'|'all'; setPeriod:(v:'7'|'30'|'all')=>void }) {
+function Dashboard({ business, sales, allSales, customerCount, total, products, bestSellers, period, setPeriod }: { business: Business | null; sales: Sale[]; allSales: Sale[]; customerCount: number; total: number; products: Product[]; bestSellers: {name:string;count:number;percentage:number}[]; period:'7'|'30'|'all'; setPeriod:(v:'7'|'30'|'all')=>void }) {
   const activeCount = products.filter((p) => p.is_active).length;
   const currencySymbol=business?.currency_symbol||'C$';
+  const downloadReport=()=>{
+    if(!business)return;
+    const pdf=new Blob([buildBusinessReportPdf(business,allSales,period,customerCount)],{type:'application/pdf'});
+    const url=URL.createObjectURL(pdf);const link=document.createElement('a');
+    link.href=url;link.download=`reporte-desempeno-${period==='all'?'historial':`${period}-dias`}.pdf`;link.click();
+    window.setTimeout(()=>URL.revokeObjectURL(url),120000);
+  };
   const chartData=useMemo(()=>{
     const now=new Date();
     const buckets=new Map<string,{key:string;label:string;amount:number}>();
@@ -758,7 +766,7 @@ function Dashboard({ business, sales, total, products, bestSellers, period, setP
   const chartMax=Math.max(...chartData.map((bucket)=>bucket.amount),1);
   const denseChart=period==='30';
   const chartDescription=period==='all'?'Total vendido por mes · últimos 12 meses':`Total vendido por día · últimos ${period} días`;
-  return <><PageHeading eyebrow="VISTA GENERAL" title={`Hola, ${business?.name || 'emprendedor'}.`} description="Aquí tienes un vistazo de cómo va tu negocio." action={<select className="select-control period-select" value={period} onChange={(e) => setPeriod(e.target.value as '7'|'30'|'all')}><option value="7">Últimos 7 días</option><option value="30">Últimos 30 días</option><option value="all">Todo el historial</option></select>} />
+  return <><PageHeading eyebrow="VISTA GENERAL" title={`Hola, ${business?.name || 'emprendedor'}.`} description="Aquí tienes un vistazo de cómo va tu negocio." action={<div className="dashboard-report-actions"><select className="select-control period-select" value={period} onChange={(e) => setPeriod(e.target.value as '7'|'30'|'all')}><option value="7">Últimos 7 días</option><option value="30">Últimos 30 días</option><option value="all">Todo el historial</option></select><button className="button button-outline" onClick={downloadReport}><FileText size={15}/> Descargar reporte</button></div>} />
     <div className="stats-grid"><StatCard label="Ventas del período" value={formatMoney(total,currencySymbol)} icon={BarChart3} hint={sales.length ? `${sales.length} ventas registradas` : 'Aún no hay ventas'} /><StatCard label="Ventas realizadas" value={String(sales.length)} icon={ShoppingBag} hint="En el período seleccionado" /><StatCard label="Productos activos" value={String(activeCount)} icon={Package} hint={`De ${products.length} productos registrados`} /></div>
     <div className="dashboard-grid"><section className="panel sales-chart-panel"><div className="panel-heading"><div><h2>Actividad de ventas</h2><p>{chartDescription}</p></div><span className="tiny-tag"><span className="green-dot" /> EN VIVO</span></div>{sales.length === 0 ? <div className="chart-empty"><span><BarChart3 size={23} /></span><strong>Aún no hay ventas en este período</strong><p>Cuando registres una venta, se sumará al día o mes correspondiente.</p></div> : <div className={`bar-chart ${denseChart?'bar-chart-dense':''}`}>{chartData.map((bucket,index)=><div className="bar-column" key={bucket.key} title={`${bucket.label}: ${formatMoney(bucket.amount,currencySymbol)}`} aria-label={`${bucket.label}: ${formatMoney(bucket.amount,currencySymbol)}`}><div className="bar-value">{denseChart?'':formatMoney(bucket.amount,currencySymbol)}</div><div className="bar-track"><div className={`bar-fill ${bucket.amount>0?'':'bar-fill-empty'}`} style={{ height: `${bucket.amount>0?Math.max(bucket.amount/chartMax*100,4):0}%` }} /></div><small>{denseChart&&index%5!==0&&index!==chartData.length-1?'':bucket.label}</small></div>)}</div>}</section>
       <section className="panel best-panel"><div className="panel-heading"><div><h2>Más vendidos</h2><p>Participación en unidades vendidas</p></div></div>{bestSellers.length ? <div className="ranking-list">{bestSellers.map((item, index) => <div className="ranking-row" key={item.name}><span className={`rank-number rank-${index+1}`}>{String(index+1).padStart(2,'0')}</span><span className="rank-product"><strong>{item.name}</strong><small>{item.count} {item.name==='Demás productos'?'unidades acumuladas':'unidades'}</small></span><span className="rank-percentage">{new Intl.NumberFormat('es-NI',{maximumFractionDigits:1}).format(item.percentage)}%</span><span className="rank-bar"><i style={{ width: `${item.percentage}%` }} /></span></div>)}</div> : <div className="mini-empty">Los productos más vendidos aparecerán aquí cuando registres ventas.</div>}<div className="best-footer"><span><ArrowUpRight size={15} /> Unidades vendidas</span><span>{bestSellers.reduce((sum, item) => sum + item.count, 0)}</span></div></section></div>
