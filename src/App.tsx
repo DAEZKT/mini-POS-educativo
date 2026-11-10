@@ -262,6 +262,14 @@ function PublicCheckoutModal({business,slug,cart,total,onQuantity,onClose,onOrde
   return <div className="public-order-backdrop" onMouseDown={(event)=>event.target===event.currentTarget&&onClose()}><section className="public-order-modal" role="dialog" aria-modal="true" aria-label="Tu pedido"><header className="public-order-header"><div><span className="eyebrow">{confirmation?'PEDIDO RECIBIDO':'TU PEDIDO'}</span><h2>{confirmation?`Pedido #${String(confirmation.order_number).padStart(5,'0')}`:'Revisa y envía tu pedido'}</h2></div><button className="icon-button" onClick={onClose} aria-label="Cerrar pedido"><X size={19}/></button></header>{confirmation?<div className="public-order-success"><span className="public-order-success-icon"><Check size={23}/></span><h3>Tu pedido quedó registrado</h3><p>El negocio lo revisará como pedido pendiente. Para enviarlo por WhatsApp, confirma el mensaje que se abrió.</p><div className="public-order-success-total"><span>Total solicitado</span><strong>{formatMoney(Number(confirmation.total_amount),confirmation.currency_symbol)}</strong></div><a className="button button-primary button-full" href={whatsappUrl} target="_blank" rel="noreferrer"><Phone size={16}/> Continuar por WhatsApp</a><button className="button button-outline button-full" onClick={onClose}>Volver al catálogo</button></div>:<><div className="public-order-lines">{cart.map(({product,quantity})=><div className="public-order-line" key={product.id}><div className="public-order-product-image">{product.image_url?<img src={product.image_url} alt=""/>:<ShoppingBag size={18}/>}</div><div className="public-order-product"><strong>{product.name}</strong>{product.variant_label&&<small>{product.variant_label}</small>}<small>{formatMoney(priceFor(product),currencySymbol)} c/u</small></div><div className="quantity-control"><button type="button" onClick={()=>onQuantity(product.id,-1)} aria-label="Restar una unidad">−</button><span>{quantity}</span><button type="button" onClick={()=>onQuantity(product.id,1)} aria-label="Agregar una unidad">+</button></div><strong className="public-order-line-total">{formatMoney(priceFor(product)*quantity,currencySymbol)}</strong></div>)}</div><form className="public-order-form" onSubmit={submit}><div className="public-order-total"><span>Total del pedido</span><strong>{formatMoney(total,currencySymbol)}</strong></div><label>Cliente<input required maxLength={120} value={name} onChange={(event)=>setName(event.target.value)} placeholder="Nombre y apellido"/></label><label>Teléfono / WhatsApp<input required type="tel" minLength={7} maxLength={30} value={phone} onChange={(event)=>setPhone(event.target.value)} placeholder="Ej. +505 8888 8888"/><small>Incluye el código de país para que el negocio pueda contactarte.</small></label><label>Dirección<input required maxLength={300} value={address} onChange={(event)=>setAddress(event.target.value)} placeholder="Dirección para la entrega"/></label><label>Ubicación en Google Maps <span className="optional">OPCIONAL</span><div className="location-input-row"><input type="url" maxLength={500} value={locationUrl} onChange={(event)=>{setLocationUrl(event.target.value);setLocationStatus('');}} placeholder="https://www.google.com/maps?q=…"/><button type="button" className="location-capture-button" onClick={captureLocation} disabled={capturingLocation} aria-label="Capturar mi ubicación GPS" title="Usar mi ubicación actual"><LocateFixed size={17}/><span>{capturingLocation?'Obteniendo…':'Mi ubicación'}</span></button></div><small>{locationStatus||'Pega un enlace de Maps o usa tu ubicación actual. El navegador pedirá permiso.'}</small></label><label>Nota para el negocio <span className="optional">OPCIONAL</span><textarea maxLength={500} rows={2} value={notes} onChange={(event)=>setNotes(event.target.value)} placeholder="Horario u otra indicación"/></label><TurnstileWidget key={captchaRefresh} onToken={setCaptchaToken}/>{!hasBusinessWhatsApp&&<div className="notice" role="status">El negocio aún no ha configurado WhatsApp para recibir pedidos.</div>}{error&&<div className="notice" role="alert">{error}</div>}<button className="button button-primary button-full" disabled={busy||!cart.length||!hasBusinessWhatsApp||!captchaToken}>{busy?'Registrando pedido…':'Enviar pedido por WhatsApp'} <ArrowUpRight size={16}/></button><p className="public-order-disclaimer">El pedido queda pendiente. El negocio confirmará disponibilidad y detalles por WhatsApp.</p></form></>}</section></div>;
 }
 
+function isAuthRateLimitError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const candidate = error as { code?: unknown; status?: unknown; message?: unknown };
+  const code = typeof candidate.code === 'string' ? candidate.code.toLowerCase() : '';
+  const message = typeof candidate.message === 'string' ? candidate.message.toLowerCase() : '';
+  return candidate.status === 429 || code.includes('rate_limit') || message.includes('too many requests') || message.includes('rate limit');
+}
+
 function AuthScreen({ onAuthenticated, canSignUp }: { onAuthenticated: (userId: string) => void; canSignUp: boolean }) {
   const [mode, setMode] = useState<'login' | 'signup'>('login');
   const [email, setEmail] = useState('');
@@ -280,7 +288,9 @@ function AuthScreen({ onAuthenticated, canSignUp }: { onAuthenticated: (userId: 
       if (result.error) {
         const code = result.error.code?.toLowerCase() || '';
         const detail = result.error.message.toLowerCase();
-        if (mode === 'signup' && (code === 'session_not_found' || detail.includes('session'))) {
+        if (mode === 'login' && isAuthRateLimitError(result.error)) {
+          setMessage('Demasiados intentos. Espera un momento antes de volver a intentarlo.');
+        } else if (mode === 'signup' && (code === 'session_not_found' || detail.includes('session'))) {
           setVerificationPending(true);
           setMessage('Tu cuenta fue creada y necesita verificar el correo. Revisa tu bandeja de entrada para encontrar el código de verificación.');
         } else if (mode === 'login' && (code === 'email_not_confirmed' || code === 'email_not_verified' || (detail.includes('email') && (detail.includes('not verified') || detail.includes('not confirmed') || detail.includes('verification'))))) {
@@ -293,7 +303,9 @@ function AuthScreen({ onAuthenticated, canSignUp }: { onAuthenticated: (userId: 
       } else if (mode === 'signup') setMessage('Cuenta creada. Para entrar, confirma el correo con el enlace que envía Neon Auth. Revisa también spam. Si no llega, el envío de correo debe estar configurado en Neon Auth.');
       else setMessage('No se inició una sesión. Si tu cuenta requiere verificación, confirma el correo enviado por Neon Auth y vuelve a intentarlo.');
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'No se pudo completar el acceso. Inténtalo de nuevo.');
+      setMessage(mode === 'login' && isAuthRateLimitError(error)
+        ? 'Demasiados intentos. Espera un momento antes de volver a intentarlo.'
+        : error instanceof Error ? error.message : 'No se pudo completar el acceso. Inténtalo de nuevo.');
     } finally {
       setBusy(false);
     }
