@@ -15,7 +15,7 @@ Mini POS es una aplicación educativa para que un emprendedor gestione su marca,
 - Historial de ventas con corrección del cliente y anulación auditable que conserva el consecutivo y se excluye del resumen.
 - Dashboard e historial de ventas.
 - Catálogo público con los productos activos.
-- Comprobante de venta y catálogo que se pueden imprimir o guardar como PDF desde el navegador.
+- Comprobante imprimible y catálogo comercial descargable como PDF, con ofertas destacadas y productos organizados por categoría.
 
 La primera versión no incluye inventario, compras, proveedores, pagos parciales, variantes de productos ni sucursales. Consulta [el alcance funcional](docs/PRODUCT_SPEC.md).
 
@@ -57,4 +57,4 @@ La migración inicial está en [`database/migrations/202611010001_initial_schema
 4. Realiza ventas inmediatas.
 5. Consulta ventas y productos en el dashboard.
 6. Comparte el catálogo público.
-7. Imprime o guarda el comprobante y el catálogo como PDF.
+7. Imprime el comprobante y descarga el catálogo comercial como PDF.

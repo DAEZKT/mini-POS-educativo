@@ -19,7 +19,7 @@ React y Vite para la app; Neon Auth para las cuentas; Neon Data API para las con
 7. **Historial de ventas:** consultar ventas, corregir el cliente asociado y anular con motivo sin borrar ni reutilizar el consecutivo. Los productos, cantidades y precios de una venta confirmada no se editan.
 8. **Dashboard:** total y número de ventas vigentes para los últimos 7 días, 30 días o todo el historial; productos más vendidos por unidades. Las ventas anuladas no se contabilizan.
 9. **Catálogo público:** página por negocio, con marca y productos activos. No muestra información de ventas.
-10. **Documentos:** comprobante de venta y catálogo imprimible. Se usa la impresión del navegador para guardar en PDF.
+10. **Documentos:** comprobante imprimible y catálogo comercial descargable como PDF. El catálogo PDF separa las ofertas de los demás productos e incluye su descripción y precio.
 
 ## Reglas de negocio
 
@@ -48,5 +48,5 @@ Inventario, compras, proveedores, cuentas por cobrar, pagos parciales, múltiple
 - No se puede activar una promoción inválida ni confirmar una venta con cantidad decimal.
 - Las ventas históricas conservan sus precios y datos aunque el producto se edite después.
 - El dashboard y el historial muestran los registros guardados.
-- El comprobante y el catálogo se pueden imprimir o guardar como PDF.
+- El comprobante se puede imprimir y el catálogo comercial se descarga directamente como PDF.
 - Una instalación limpia se puede preparar usando las instrucciones y migraciones del repositorio.

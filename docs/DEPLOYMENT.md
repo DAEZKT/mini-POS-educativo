@@ -186,7 +186,7 @@ Al aplicar `202611070005_link_customers_to_sales.sql`, cada venta del punto de v
 3. Crea productos con precio y elige si cada producto está activo.
 4. Si corresponde, configura un precio promocional y activa o desactiva la promoción con su interruptor. No hay vencimiento automático.
 5. Haz una venta de prueba con cantidades enteras.
-6. Revisa dashboard, catálogo público y comprobante; prueba imprimir o guardar como PDF.
+6. Revisa dashboard, catálogo público, comprobante y la descarga directa del catálogo PDF.
 
 ## 6. Gestionar cambios de base de datos
 

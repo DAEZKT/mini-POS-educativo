@@ -2,7 +2,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 're
 import type { CSSProperties, ReactNode } from 'react';
 import { upload as uploadBlob } from '@vercel/blob/client';
 import {
-  ArrowUpRight, Ban, BarChart3, Check, ChevronDown, ChevronLeft, ChevronRight, CircleHelp, ClipboardList, ImagePlus,
+  ArrowUpRight, Ban, BarChart3, Check, ChevronDown, ChevronLeft, ChevronRight, CircleHelp, ClipboardList, Download, ImagePlus,
   LocateFixed,
   ExternalLink, Eye, Facebook, Instagram, LogOut, Menu,
   MessageCircle, MoreVertical, Music2, Package, Pencil, Plus, Printer, Search, Settings2, ShoppingBag, ShoppingCart, Trash2,
@@ -11,6 +11,7 @@ import {
 import { isNeonConfigured, neon } from './lib/neon';
 import { Business, Category, Customer, formatDate, formatMoney, priceFor, Product, PublicOrder, PublicOrderStatus, Sale } from './lib/types';
 import { buildReceiptPdf } from './lib/receipt-pdf';
+import { buildCatalogPdf } from './lib/catalog-pdf';
 
 type Page = 'dashboard' | 'products' | 'categories' | 'sale' | 'history' | 'publicOrders' | 'customers' | 'brand' | 'access';
 type CartRow = { product: Product; quantity: number };
@@ -117,6 +118,8 @@ function PublicCatalog() {
   const [checkoutOpen,setCheckoutOpen]=useState(false);
   const [previewProduct,setPreviewProduct]=useState<Product|null>(null);
   const [visibleProductCount,setVisibleProductCount]=useState(12);
+  const [catalogPdfBusy,setCatalogPdfBusy]=useState(false);
+  const [catalogPdfError,setCatalogPdfError]=useState('');
   const offersTrackRef=useRef<HTMLDivElement>(null);
   const slug = window.location.pathname.split('/').filter(Boolean).at(-1) || '';
   useEffect(() => {
@@ -156,6 +159,18 @@ function PublicCatalog() {
   });
   const visiblePublicProducts=filteredProducts.slice(0,visibleProductCount);
   const promotionalProducts=products.filter((product)=>product.promotion_enabled);
+  const downloadCatalogPdf=()=>{
+    setCatalogPdfBusy(true);setCatalogPdfError('');
+    try{
+      const pdf=buildCatalogPdf(business,products);
+      const url=URL.createObjectURL(new Blob([pdf],{type:'application/pdf'}));
+      const link=document.createElement('a');
+      const filename=(business.public_slug||business.name).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')||'negocio';
+      link.href=url;link.download=`catalogo-${filename}.pdf`;link.style.display='none';document.body.appendChild(link);link.click();link.remove();
+      window.setTimeout(()=>URL.revokeObjectURL(url),1000);
+    }catch(error){setCatalogPdfError(error instanceof Error?error.message:'No se pudo generar el catálogo PDF.');}
+    finally{setCatalogPdfBusy(false);}
+  };
   const publicCartTotal=publicCart.reduce((total,row)=>total+priceFor(row.product)*row.quantity,0);
   const addPublicCart=(product:Product)=>setPublicCart((rows)=>{
     const existing=rows.find((row)=>row.product.id===product.id);
@@ -165,8 +180,9 @@ function PublicCatalog() {
   return <main className="public-page" style={{ '--brand': business.primary_color, '--brand-soft': business.secondary_color } as CSSProperties}>
     <header className="public-header">
       <div className="public-brand"><span className="brand-mark"><Store size={19} /></span><div><strong>{business.name}</strong><small>Catálogo de productos</small></div></div>
-      <div className="public-header-actions"><button className="button button-primary public-cart-button no-print" onClick={()=>setCheckoutOpen(true)}><ShoppingCart size={16}/> Mi pedido{publicCart.length>0&&<span>{publicCart.reduce((n,row)=>n+row.quantity,0)}</span>}</button><button className="button button-outline no-print public-print-button" onClick={()=>{setVisibleProductCount(filteredProducts.length);window.setTimeout(()=>window.print(),50);}}><Printer size={16} /> Imprimir catálogo</button></div>
+      <div className="public-header-actions"><button className="button button-primary public-cart-button no-print" onClick={()=>setCheckoutOpen(true)}><ShoppingCart size={16}/> Mi pedido{publicCart.length>0&&<span>{publicCart.reduce((n,row)=>n+row.quantity,0)}</span>}</button><button type="button" className="button button-outline no-print public-print-button" disabled={catalogPdfBusy} onClick={downloadCatalogPdf}><Download size={16}/>{catalogPdfBusy?'Preparando PDF…':'Descargar catálogo PDF'}</button></div>
     </header>
+    {catalogPdfError&&<p className="catalog-download-error" role="alert">{catalogPdfError}</p>}
     {promotionalProducts.length>0&&<section className="public-offers" aria-label="Ofertas exclusivas"><div className="public-offers-heading"><div className="public-offers-title"><span><Tag size={17}/></span><div><h2>Ofertas exclusivas</h2><p>{promotionalProducts.length} {promotionalProducts.length===1?'producto en descuento':'productos en descuento'}</p></div></div><div className="public-offers-arrows no-print"><button type="button" aria-label="Ver ofertas anteriores" onClick={()=>offersTrackRef.current?.scrollBy({left:-300,behavior:'smooth'})}><ChevronLeft size={17}/></button><button type="button" aria-label="Ver más ofertas" onClick={()=>offersTrackRef.current?.scrollBy({left:300,behavior:'smooth'})}><ChevronRight size={17}/></button></div></div><div className="public-offers-track" ref={offersTrackRef}>{promotionalProducts.map((product)=><article className="public-offer-card" key={product.id}><button type="button" className="public-offer-image image-preview-trigger" onClick={()=>setPreviewProduct(product)} aria-label={`Ver imagen de ${product.name}`}>{product.image_url?<img src={product.image_url} alt={product.name} loading="lazy"/>:<ShoppingBag size={31}/>}<span className="image-preview-hint"><Eye size={14}/> Ver imagen</span><span className="offer-image-badge">Oferta</span></button><div className="public-offer-info"><strong title={product.name}>{product.name}</strong>{product.variant_label&&<small>{product.variant_label}</small>}<s>{formatMoney(product.regular_price,business.currency_symbol)}</s><div><b>{formatMoney(priceFor(product),business.currency_symbol)}</b><button type="button" aria-label={`Agregar ${product.name} al pedido`} onClick={()=>addPublicCart(product)}><Plus size={17}/></button></div></div></article>)}</div><div className="public-offers-scroll-hint no-print"><span/></div></section>}
     <section className="public-catalog-controls no-print"><div className="public-controls-heading"><div><span className="eyebrow">EXPLORA LA COLECCIÓN</span><h2>Nuestros productos</h2></div><span className="public-result-count">{filteredProducts.length} {filteredProducts.length===1?'resultado':'resultados'}</span></div><label className="public-search"><Search size={17}/><input type="search" value={query} onChange={(event)=>setQuery(event.target.value)} placeholder="Buscar productos…" aria-label="Buscar productos por nombre o descripción"/>{query&&<button type="button" onClick={()=>setQuery('')} aria-label="Limpiar búsqueda"><X size={15}/></button>}</label>{categoryNames.length>0&&<div className="public-filter-row"><span className="public-filter-label">Categorías</span><div className="public-filter-chips"><button className={`public-filter-chip ${selectedCategory==='Todas'?'active':''}`} onClick={()=>setSelectedCategory('Todas')}>Todas <small>{products.length}</small></button>{categoryNames.map((category)=>{const count=products.filter((product)=>(product.category_name?.trim()||'Sin categoría')===category).length;return <button key={category} className={`public-filter-chip ${selectedCategory===category?'active':''}`} onClick={()=>setSelectedCategory(category)}>{category}<small>{count}</small></button>;})}</div></div>}</section>
     {filteredProducts.length === 0 ? <section className="public-empty"><span><Search size={24}/></span><h2>{products.length?'No encontramos productos':'Aún no hay productos publicados'}</h2><p>{products.length?'Prueba otra búsqueda o cambia la categoría seleccionada.':'Vuelve pronto para ver los productos de este negocio.'}</p>{(query||selectedCategory!=='Todas')&&<button className="button button-outline no-print" onClick={()=>{setQuery('');setSelectedCategory('Todas');}}>Ver todos los productos</button>}</section> : <section className="public-category"><div className="public-grid">{visiblePublicProducts.map((product) => <article className="public-product" key={product.id}>
