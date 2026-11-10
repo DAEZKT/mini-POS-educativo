@@ -33,14 +33,14 @@ const wrapText = (value: string, maxLength: number) => {
 const textCommand = (value: string, x: number, y: number, size: number, bold = false) =>
   `BT /${bold ? 'F2' : 'F1'} ${size} Tf ${x} ${y} Td (${escapePdf(value)}) Tj ET`;
 
-export function buildReceiptPdf(sale: Sale, business: Business): Uint8Array {
+export function buildReceiptPdf(sale: Sale, business: Business, customerName = ''): Uint8Array {
   const items = sale.sale_items || [];
   const itemLines = items.map((item: SaleItem) => ({
     item,
     nameLines: wrapText(`${item.quantity} x ${item.product_name}${item.variant_label ? ` [${item.variant_label}]` : ''}`, 34),
   }));
-  const itemHeight = itemLines.reduce((height, row) => height + row.nameLines.length * 12 + (row.item.promotion_applied ? 10 : 0) + 9, 0);
-  const pageHeight = Math.max(280, 250 + itemHeight);
+  const itemHeight = itemLines.reduce((height, row) => height + row.nameLines.length * 12 + 24 + (row.item.promotion_applied ? 10 : 0) + 9, 0);
+  const pageHeight = Math.max(320, 310 + itemHeight);
   const commands: string[] = [];
   const accent = /^#[0-9a-f]{6}$/i.test(business.primary_color) ? business.primary_color : '#6d5ce8';
   const color = [1, 3, 5].map((index) => (parseInt(accent.slice(index, index + 2), 16) / 255).toFixed(3)).join(' ');
@@ -66,6 +66,8 @@ export function buildReceiptPdf(sale: Sale, business: Business): Uint8Array {
   y -= 14;
   commands.push(textCommand(new Intl.DateTimeFormat('es-NI', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(sale.sold_at)), 25, y, 8));
   y -= 9;
+  commands.push(textCommand(`Cliente: ${customerName || 'Consumidor final'}`, 25, y, 8));
+  y -= 14;
   rule();
 
   for (const { item, nameLines } of itemLines) {
@@ -78,6 +80,14 @@ export function buildReceiptPdf(sale: Sale, business: Business): Uint8Array {
       }
       y -= 11;
     });
+    const unit = `${business.currency_symbol || 'C$'} ${Number(item.unit_price).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    commands.push(textCommand(`Precio unitario${item.promotion_applied ? ' (oferta)' : ''}: ${unit}`, 25, y, 7));
+    y -= 10;
+    if (item.promotion_applied && Number(item.regular_unit_price) > Number(item.unit_price)) {
+      const regular = `${business.currency_symbol || 'C$'} ${Number(item.regular_unit_price).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+      commands.push(textCommand(`Precio normal: ${regular}`, 25, y, 7));
+      y -= 10;
+    }
     if (item.promotion_applied) {
       commands.push(textCommand('Promocion aplicada', 25, y, 7));
       y -= 10;
@@ -92,6 +102,9 @@ export function buildReceiptPdf(sale: Sale, business: Business): Uint8Array {
   y -= 25;
   rule(`${color} RG`);
   centered('Gracias por tu compra', 9, true);
+  y -= 2;
+  centered('Comprobante informativo de venta.', 7);
+  centered('No es factura ni documento fiscal autorizado por la DGI.', 7);
 
   const stream = commands.join('\n');
   const objects = [
