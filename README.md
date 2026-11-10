@@ -14,6 +14,7 @@ Mini POS es una aplicación educativa para que un emprendedor gestione su marca,
 - Ventas inmediatas con cantidades enteras positivas.
 - Historial de ventas con corrección del cliente y anulación auditable que conserva el consecutivo y se excluye del resumen.
 - Dashboard e historial de ventas.
+- Instalable como PWA en navegadores compatibles para abrir la administración en una ventana propia; no incluye funcionamiento offline.
 - Catálogo público con los productos activos.
 - Comprobante imprimible y catálogo comercial descargable como PDF, con ofertas destacadas y productos organizados por categoría.
 
@@ -37,6 +38,10 @@ La primera versión no incluye inventario, compras, proveedores, pagos parciales
 7. Ejecuta `npm run dev` y abre la URL local que indique Vite.
 
 La app de navegador usa las URL públicas de Neon Auth y Neon Data API. **No configures una contraseña SQL en variables `VITE_*`**. `DATABASE_URL` es una credencial administrativa que se usa desde una terminal para migraciones, nunca desde el navegador.
+
+### Instalar en el dispositivo
+
+La app requiere conexión a internet para usar Neon. En Chrome o Edge, abre la raíz de la app y selecciona **Instalar Mini POS** desde el icono de instalación o el menú del navegador. En Android, usa **Instalar aplicación** desde el menú de Chrome. En iPhone o iPad, abre la raíz en Safari y elige **Compartir → Añadir a pantalla de inicio**. El catálogo público conserva su URL compartible y no ofrece la instalación de la consola administrativa.
 
 ## Base de datos y migraciones
 
