@@ -1,5 +1,6 @@
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { upload as uploadBlob } from '@vercel/blob/client';
 import {
   ArrowUpRight, Ban, BarChart3, Check, ChevronDown, ChevronLeft, ChevronRight, CircleHelp, ClipboardList, Download, ImagePlus,
@@ -839,6 +840,64 @@ function SalePage({ products, categories, customers, customersLoading, currencyS
   </div>;
 }
 
+function CustomerPicker({customers,value,onChange}:{customers:Customer[];value:string;onChange:(id:string)=>void}){
+  const pickerId=useId();
+  const [open,setOpen]=useState(false);
+  const [query,setQuery]=useState('');
+  const [position,setPosition]=useState<{top:number;left:number;width:number;height:number}|null>(null);
+  const triggerRef=useRef<HTMLButtonElement>(null);
+  const popoverRef=useRef<HTMLDivElement>(null);
+  const selected=customers.find((customer)=>customer.id===value);
+  const matches=customers.filter((customer)=>`${customer.name} ${customer.phone}`.toLocaleLowerCase('es').includes(query.trim().toLocaleLowerCase('es')));
+  const toggle=()=>{
+    if(open){setOpen(false);return;}
+    const anchor=triggerRef.current?.getBoundingClientRect();
+    if(!anchor)return;
+    const viewportHeight=window.visualViewport?.height||window.innerHeight;
+    const desiredHeight=Math.min(300,viewportHeight-24);
+    const above=anchor.top-12;
+    const below=viewportHeight-anchor.bottom-12;
+    const openUp=below<desiredHeight&&above>below;
+    const height=Math.max(130,Math.min(desiredHeight,openUp?above:below));
+    const width=Math.min(Math.max(anchor.width,300),window.innerWidth-24);
+    const left=Math.max(12,Math.min(anchor.left,window.innerWidth-width-12));
+    const top=openUp?Math.max(12,anchor.top-height-7):anchor.bottom+7;
+    setPosition({top,left,width,height});
+    setQuery('');
+    setOpen(true);
+  };
+  useEffect(()=>{
+    if(!open)return;
+    const closeOutside=(event:PointerEvent)=>{
+      const target=event.target as Node;
+      if(!triggerRef.current?.contains(target)&&!popoverRef.current?.contains(target))setOpen(false);
+    };
+    const closeOnEscape=(event:KeyboardEvent)=>{if(event.key==='Escape'){setOpen(false);triggerRef.current?.focus();}};
+    document.addEventListener('pointerdown',closeOutside);
+    document.addEventListener('keydown',closeOnEscape);
+    return()=>{
+      document.removeEventListener('pointerdown',closeOutside);
+      document.removeEventListener('keydown',closeOnEscape);
+    };
+  },[open]);
+  const choose=(customerId:string)=>{onChange(customerId);setOpen(false);setQuery('');};
+  return <>
+    <button ref={triggerRef} type="button" className={`customer-picker-trigger ${open?'open':''}`} aria-expanded={open} aria-controls={`${pickerId}-listbox`} aria-haspopup="dialog" onClick={toggle}>
+      <span className="customer-picker-trigger-icon"><Users size={17}/></span>
+      <span className="customer-picker-trigger-copy"><small>CLIENTE ASOCIADO</small><strong>{selected?.name||'Sin cliente asociado'}</strong><small>{selected?`+${selected.phone}`:'La venta no tiene un cliente asignado'}</small></span>
+      <ChevronDown size={17} className="customer-picker-chevron"/>
+    </button>
+    {open&&position&&createPortal(<div ref={popoverRef} className="customer-picker-popover" role="dialog" aria-label="Seleccionar cliente" style={position}>
+      <label className="customer-picker-search"><Search size={16}/><input autoComplete="off" value={query} onChange={(event)=>setQuery(event.target.value)} placeholder="Buscar por nombre o teléfono…" aria-label="Buscar cliente"/><span>{matches.length}</span></label>
+      <div className="customer-picker-options" id={`${pickerId}-listbox`} role="listbox" aria-label="Clientes disponibles">
+        <button type="button" role="option" aria-selected={!value} className={`customer-picker-option customer-picker-clear ${!value?'selected':''}`} onClick={()=>choose('')}><span className="customer-picker-avatar muted-avatar"><Users size={15}/></span><span><strong>Sin cliente asociado</strong><small>Dejar esta venta sin cliente</small></span>{!value&&<Check size={16}/>}</button>
+        {matches.map((customer)=><button type="button" role="option" aria-selected={customer.id===value} key={customer.id} className={`customer-picker-option ${customer.id===value?'selected':''}`} onClick={()=>choose(customer.id)}><span className="customer-picker-avatar">{customer.name.trim().charAt(0).toLocaleUpperCase('es')||<Users size={15}/>}</span><span><strong>{customer.name}</strong><small>+{customer.phone}</small></span>{customer.id===value&&<Check size={16}/>}</button>)}
+        {matches.length===0&&<div className="customer-picker-empty"><Search size={17}/><span>No encontramos clientes con esa búsqueda.</span></div>}
+      </div>
+    </div>,document.body)}
+  </>;
+}
+
 function HistoryPage({ sales:allSales, orders, customers, currencySymbol, onReceipt, onUpdateCustomer, onVoid }: { sales:Sale[]; orders:PublicOrder[]; customers:Customer[]; currencySymbol:string; onReceipt:(sale:Sale)=>void; onUpdateCustomer:(saleId:string,customerId:string|null)=>Promise<boolean>; onVoid:(saleId:string,reason:string)=>Promise<void> }) {
   const [detail,setDetail]=useState<Sale|null>(null);
   const [editingSale,setEditingSale]=useState<Sale|null>(null);
@@ -908,7 +967,7 @@ function HistoryPage({ sales:allSales, orders, customers, currencySymbol, onRece
     <section className="panel table-panel history-table-panel" ref={tablePanelRef}><div className="table-toolbar"><div><strong className="table-title">Historial de ventas</strong><p>Las anuladas se conservan aquí y se excluyen del resumen.</p></div><div className="history-toolbar-tools"><label className="search-box history-sales-search"><Search size={15}/><input aria-label="Buscar ventas" placeholder="Venta, cliente o producto…" value={salesSearch} onChange={(event)=>setSalesSearch(event.target.value)}/>{salesSearch&&<button type="button" className="pos-clear-search" onClick={()=>setSalesSearch('')} aria-label="Limpiar búsqueda"><X size={14}/></button>}</label><span className="item-count">{normalizedSalesSearch?`${filteredSales.length} de ${allSales.length}`:`${allSales.length} registros`}</span></div></div>
     {allSales.length ? filteredSales.length ? <><div className="table-scroll"><table><thead><tr><th>VENTA</th><th>FECHA</th><th>CLIENTE</th><th>ARTÍCULOS</th><th>ESTADO</th><th>TOTAL</th><th></th></tr></thead><tbody>{sales.map((sale)=>{const orderBuyer=buyerFor(sale);const customer=customerFor(sale);return <tr key={sale.id} className={sale.status==='voided'?'sale-row-voided':''}><td><div className="sale-number"><span className="sale-mini"><ShoppingBag size={15}/></span><span><strong>#{String(sale.sale_number).padStart(5,'0')}</strong>{sale.public_order_id&&<small className="sale-source-label">Pedido web #{String(sale.public_order_number||'').padStart(5,'0')}</small>}</span></div></td><td>{formatDate(sale.sold_at)}</td><td>{customer?<><strong>{customer.name}</strong><small className="history-buyer-phone">+{customer.phone}</small></>:orderBuyer?<><strong>{orderBuyer.customer_name}</strong><small className="history-buyer-phone">+{orderBuyer.customer_phone}</small></>:<span className="muted">Sin cliente</span>}</td><td>{(sale.sale_items||[]).reduce((n,item)=>n+item.quantity,0)} unidades</td><td><span className={`sale-status-pill ${sale.status==='voided'?'voided':'completed'}`}>{sale.status==='voided'?'Anulada':'Realizada'}</span>{sale.status==='voided'&&sale.void_reason&&<small className="sale-void-reason">{sale.void_reason}</small>}</td><td><strong>{formatMoney(Number(sale.total_amount),currencySymbol)}</strong></td><td className="history-menu-cell"><button ref={actionMenu?.sale.id===sale.id?actionButtonRef:undefined} type="button" className="history-menu-trigger" aria-label={`Acciones de la venta ${sale.sale_number}`} aria-haspopup="menu" aria-expanded={actionMenu?.sale.id===sale.id} onClick={(event)=>toggleActionMenu(event,sale)}><MoreVertical size={18}/></button></td></tr>;})}</tbody></table></div><TablePagination page={page} total={filteredSales.length} onPage={setPage}/>{actionMenu&&<div className="history-action-menu" role="menu" style={{top:actionMenu.top,left:actionMenu.left}}><button role="menuitem" onClick={()=>{setDetail(actionMenu.sale);setActionMenu(null);}}><Eye size={15}/> Detalle</button>{actionMenu.sale.status==='completed'&&<><button role="menuitem" onClick={()=>{setEditingSale(actionMenu.sale);setCustomerChoice(actionMenu.sale.customer_id||'');setActionMenu(null);}}><Users size={15}/> Cliente</button><button role="menuitem" className="danger" onClick={()=>{const sale=actionMenu.sale;setActionMenu(null);void voidSale(sale);}}><Ban size={15}/> Anular</button><button role="menuitem" onClick={()=>{onReceipt(actionMenu.sale);setActionMenu(null);}}><Printer size={15}/> Comprobante</button></>}</div>}</> : <div className="empty-state"><span className="empty-icon"><Search size={23}/></span><strong>No encontramos ventas</strong><p>Prueba con otro número, cliente o producto.</p></div> : <div className="empty-state"><span className="empty-icon"><ClipboardList size={23}/></span><strong>Las ventas aparecerán aquí</strong><p>Registra tu primera venta para empezar tu historial.</p></div>}</section>
     {detail&&<div className="modal-backdrop" role="presentation" onMouseDown={(event)=>event.target===event.currentTarget&&setDetail(null)}><section className="modal-card sale-detail-modal" role="dialog" aria-modal="true" aria-label="Detalle de venta"><div className="modal-heading"><div><span className="eyebrow">DETALLE DE VENTA · {detail.status==='voided'?'ANULADA':'REALIZADA'}</span><h2>Venta #{String(detail.sale_number).padStart(5,'0')}</h2></div><button className="icon-button" onClick={()=>setDetail(null)} aria-label="Cerrar detalle"><X size={19}/></button></div><div className="sale-detail-meta"><span><small>Fecha</small><strong>{formatDate(detail.sold_at)}</strong></span><span><small>Origen</small><strong>{buyer?'Pedido web':'Punto de venta'}</strong></span><span><small>Cliente</small><strong>{savedCustomer?.name||buyer?.customer_name||'No registrado'}</strong>{savedCustomer&&<a href={`tel:+${savedCustomer.phone}`}>+{savedCustomer.phone}</a>}{!savedCustomer&&buyer&&<a href={`tel:+${buyer.customer_phone}`}>+{buyer.customer_phone}</a>}</span></div>{detail.status==='voided'&&<div className="notice">Anulada el {detail.voided_at?formatDate(detail.voided_at):'—'}. Motivo: {detail.void_reason||'No especificado'}.</div>}{(buyer||savedCustomer)&&<div className="sale-detail-contact"><strong>{buyer?'Datos del pedido':'Contacto del cliente'}</strong><span>{buyer?.customer_address||savedCustomer?.address||'Sin dirección guardada'}</span>{buyer?.customer_location_url&&<a href={buyer.customer_location_url} target="_blank" rel="noreferrer">Ver ubicación en Maps</a>}{!buyer&&savedCustomer?.location_url&&<a href={savedCustomer.location_url} target="_blank" rel="noreferrer">Ver ubicación en Maps</a>}</div>}<div className="sale-detail-lines">{(detail.sale_items||[]).map((item)=><div key={item.id}><span><strong>{item.quantity} × {item.product_name}</strong>{item.variant_label&&<small>{item.variant_label}</small>}{item.promotion_applied&&<small>Promoción aplicada</small>}</span><strong>{formatMoney(Number(item.line_total),currencySymbol)}</strong></div>)}</div><div className="sale-detail-total"><span>{detail.status==='voided'?'Total anulado':'Total'}</span><strong>{formatMoney(Number(detail.total_amount),currencySymbol)}</strong></div><div className="modal-actions"><button className="button button-outline" onClick={()=>setDetail(null)}>Cerrar</button>{detail.status==='completed'&&<button className="button button-primary" onClick={()=>onReceipt(detail)}><Printer size={14}/> Comprobante</button>}</div></section></div>}
-    {editingSale&&<div className="modal-backdrop" role="presentation" onMouseDown={(event)=>event.target===event.currentTarget&&!savingCustomer&&setEditingSale(null)}><form className="modal-card sale-customer-modal" onSubmit={saveCustomer}><div className="modal-heading"><div><span className="eyebrow">CORREGIR VENTA</span><h2>Venta #{String(editingSale.sale_number).padStart(5,'0')}</h2></div><button type="button" className="icon-button" disabled={savingCustomer} onClick={()=>setEditingSale(null)} aria-label="Cerrar"> <X size={19}/></button></div><p className="muted">Cambia el cliente asociado. Los productos, precios, total y consecutivo de la venta se conservan.</p><label>Cliente<select value={customerChoice} onChange={(event)=>setCustomerChoice(event.target.value)}><option value="">Sin cliente asociado</option>{customers.map((customer)=><option key={customer.id} value={customer.id}>{customer.name} · +{customer.phone}</option>)}</select></label><div className="modal-actions"><button type="button" className="button button-outline" disabled={savingCustomer} onClick={()=>setEditingSale(null)}>Cancelar</button><button className="button button-primary" disabled={savingCustomer}>{savingCustomer?'Guardando…':'Guardar cliente'}</button></div></form></div>}
+    {editingSale&&<div className="modal-backdrop" role="presentation" onMouseDown={(event)=>event.target===event.currentTarget&&!savingCustomer&&setEditingSale(null)}><form className="modal-card sale-customer-modal" onSubmit={saveCustomer}><div className="modal-heading"><div><span className="eyebrow">CORREGIR VENTA</span><h2>Venta #{String(editingSale.sale_number).padStart(5,'0')}</h2></div><button type="button" className="icon-button" disabled={savingCustomer} onClick={()=>setEditingSale(null)} aria-label="Cerrar"> <X size={19}/></button></div><p className="muted">Cambia el cliente asociado. Los productos, precios, total y consecutivo de la venta se conservan.</p><div className="sale-customer-field"><span className="sale-customer-label">Cliente <small>OPCIONAL</small></span><CustomerPicker customers={customers} value={customerChoice} onChange={setCustomerChoice}/></div><div className="modal-actions"><button type="button" className="button button-outline" disabled={savingCustomer} onClick={()=>setEditingSale(null)}>Cancelar</button><button className="button button-primary" disabled={savingCustomer}>{savingCustomer?'Guardando…':'Guardar cliente'}</button></div></form></div>}
   </>;
 }
 
