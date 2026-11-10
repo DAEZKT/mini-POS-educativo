@@ -16,7 +16,7 @@ Mini POS es una aplicación educativa para que un emprendedor gestione su marca,
 - Dashboard e historial de ventas.
 - Instalable como PWA en navegadores compatibles para abrir la administración en una ventana propia; no incluye funcionamiento offline.
 - Catálogo público con los productos activos.
-- Comprobante imprimible y catálogo comercial descargable como PDF, con ofertas destacadas y productos organizados por categoría.
+- Comprobante imprimible y catálogo comercial descargable como PDF, con fotos, ofertas destacadas y productos organizados por categoría.
 
 La primera versión no incluye inventario, compras, proveedores, pagos parciales, variantes de productos ni sucursales. Consulta [el alcance funcional](docs/PRODUCT_SPEC.md).
 

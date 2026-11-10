@@ -11,7 +11,7 @@ import {
 import { isNeonConfigured, neon } from './lib/neon';
 import { Business, Category, Customer, formatDate, formatMoney, priceFor, Product, PublicOrder, PublicOrderStatus, Sale } from './lib/types';
 import { buildReceiptPdf } from './lib/receipt-pdf';
-import { buildCatalogPdf } from './lib/catalog-pdf';
+import { buildCatalogPdf, loadCatalogPdfImages } from './lib/catalog-pdf';
 
 type Page = 'dashboard' | 'products' | 'categories' | 'sale' | 'history' | 'publicOrders' | 'customers' | 'brand' | 'access';
 type CartRow = { product: Product; quantity: number };
@@ -159,15 +159,17 @@ function PublicCatalog() {
   });
   const visiblePublicProducts=filteredProducts.slice(0,visibleProductCount);
   const promotionalProducts=products.filter((product)=>product.promotion_enabled);
-  const downloadCatalogPdf=()=>{
+  const downloadCatalogPdf=async()=>{
     setCatalogPdfBusy(true);setCatalogPdfError('');
     try{
-      const pdf=buildCatalogPdf(business,products);
+      const {images,unavailable}=await loadCatalogPdfImages(products);
+      const pdf=buildCatalogPdf(business,products,images);
       const url=URL.createObjectURL(new Blob([pdf],{type:'application/pdf'}));
       const link=document.createElement('a');
       const filename=(business.public_slug||business.name).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')||'negocio';
       link.href=url;link.download=`catalogo-${filename}.pdf`;link.style.display='none';document.body.appendChild(link);link.click();link.remove();
       window.setTimeout(()=>URL.revokeObjectURL(url),1000);
+      if(unavailable.length)setCatalogPdfError(`El PDF se descargó, pero no se pudieron cargar las imágenes de: ${unavailable.join(', ')}. Revisa que sus enlaces sean accesibles desde el navegador.`);
     }catch(error){setCatalogPdfError(error instanceof Error?error.message:'No se pudo generar el catálogo PDF.');}
     finally{setCatalogPdfBusy(false);}
   };

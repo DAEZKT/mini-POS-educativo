@@ -8,6 +8,40 @@ const RIGHT = PAGE_WIDTH - 42;
 const CONTENT_WIDTH = RIGHT - LEFT;
 const FOOTER_Y = 42;
 
+export type CatalogPdfImage = { width: number; height: number; data: Uint8Array };
+
+export async function loadCatalogPdfImages(products: Product[]): Promise<{ images: Record<string, CatalogPdfImage>; unavailable: string[] }> {
+  const images: Record<string, CatalogPdfImage> = {};
+  const unavailable: string[] = [];
+  const withImage = products.filter((product) => product.is_active && product.image_url);
+  for (let index = 0; index < withImage.length; index += 6) {
+    await Promise.all(withImage.slice(index, index + 6).map(async (product) => {
+      try {
+        const response = await fetch(product.image_url!, { mode: 'cors', credentials: 'omit' });
+        if (!response.ok) throw new Error('image request failed');
+        const bitmap = await createImageBitmap(await response.blob());
+        const scale = Math.min(1, 320 / Math.max(bitmap.width, bitmap.height));
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+        canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+        const context = canvas.getContext('2d');
+        if (!context) throw new Error('canvas unavailable');
+        context.fillStyle = '#ffffff';
+        context.fillRect(0, 0, canvas.width, canvas.height);
+        context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+        bitmap.close();
+        const jpeg = await new Promise<Blob>((resolve, reject) => {
+          canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error('image encoding failed')), 'image/jpeg', 0.86);
+        });
+        images[product.id] = { width: canvas.width, height: canvas.height, data: new Uint8Array(await jpeg.arrayBuffer()) };
+      } catch {
+        unavailable.push(product.name);
+      }
+    }));
+  }
+  return { images, unavailable };
+}
+
 const ascii = (value: string) => value
   .replaceAll('₡', 'CRC ')
   .replaceAll('€', 'EUR ')
@@ -53,6 +87,21 @@ const rectangle = (x: number, y: number, width: number, height: number, fill: st
 const line = (x1: number, y1: number, x2: number, y2: number, color = '0.89 0.88 0.92', width = 0.7) =>
   `${color} RG ${width} w ${x1} ${y1} m ${x2} ${y2} l S`;
 
+const drawProductImage = (imageName: string, x: number, y: number, width: number, height: number, image: CatalogPdfImage | undefined) => {
+  const commands = [rectangle(x, y, width, height, '0.96 0.95 0.98', '0.89 0.88 0.92')];
+  if (!image) {
+    commands.push(text('SIN FOTO', x + 9, y + height / 2 - 2, 6, true, '0.61 0.60 0.67'));
+    return commands;
+  }
+  const scale = Math.min((width - 6) / image.width, (height - 6) / image.height);
+  const drawWidth = image.width * scale;
+  const drawHeight = image.height * scale;
+  const drawX = x + (width - drawWidth) / 2;
+  const drawY = y + (height - drawHeight) / 2;
+  commands.push(`q ${drawWidth} 0 0 ${drawHeight} ${drawX} ${drawY} cm /${imageName} Do Q`);
+  return commands;
+};
+
 const truncateLines = (value: string, maxChars: number, maxLines: number) => {
   const lines = wrap(value, maxChars);
   if (lines.length <= maxLines) return lines;
@@ -61,20 +110,23 @@ const truncateLines = (value: string, maxChars: number, maxLines: number) => {
   return visible;
 };
 
-export function buildCatalogPdf(business: Business, sourceProducts: Product[]): Uint8Array {
+export function buildCatalogPdf(business: Business, sourceProducts: Product[], productImages: Record<string, CatalogPdfImage> = {}): Uint8Array {
   const products = sourceProducts.filter((product) => product.is_active);
   const offers = products.filter((product) => product.promotion_enabled);
   const standardProducts = products.filter((product) => !product.promotion_enabled);
   const accent = rgb(business.primary_color, '#6d5ce8');
   const pale = rgb(business.secondary_color, '#ece9ff');
-  const pages: string[][] = [];
+  const imageNames = new Map(Object.keys(productImages).map((productId, index) => [productId, `Im${index}`]));
+  const pages: { commands: string[]; images: Set<string> }[] = [];
+  let currentPage: { commands: string[]; images: Set<string> } = { commands: [], images: new Set() };
   let commands: string[] = [];
   let y = 0;
   let currentSection = '';
 
   const startPage = () => {
     commands = [];
-    pages.push(commands);
+    currentPage = { commands, images: new Set() };
+    pages.push(currentPage);
     commands.push(rectangle(0, PAGE_HEIGHT - 7, PAGE_WIDTH, 7, accent));
     commands.push(text(business.name, LEFT, PAGE_HEIGHT - 39, 14, true));
     if (business.phone) commands.push(text(business.phone, RIGHT - ascii(business.phone).length * 4.2, PAGE_HEIGHT - 38, 8, false, '0.43 0.42 0.51'));
@@ -116,28 +168,33 @@ export function buildCatalogPdf(business: Business, sourceProducts: Product[]): 
     drawSectionHeading(currentSection);
     for (const product of offers) {
       const description = product.description?.trim() || 'Consulta con el negocio para conocer mas detalles.';
-      const descriptionLines = truncateLines(description, 64, 3);
+      const descriptionLines = truncateLines(description, 42, 3);
       const category = product.category_name?.trim();
       const name = `${product.name}${product.variant_label ? ` - ${product.variant_label}` : ''}`;
-      const nameLines = truncateLines(name, 53, 2);
+      const nameLines = truncateLines(name, 37, 2);
       const height = Math.max(88, 58 + nameLines.length * 14 + (category ? 12 : 0) + descriptionLines.length * 11);
       ensureSpace(height + 8);
       const top = y;
       const bottom = y - height;
       commands.push(rectangle(LEFT, bottom, CONTENT_WIDTH, height, '0.985 0.982 0.997', '0.89 0.87 0.94'));
       commands.push(rectangle(LEFT, bottom, 4, height, accent));
-      commands.push(text('OFERTA', LEFT + 15, top - 18, 7, true, accent));
-      nameLines.forEach((nameLine, index) => commands.push(text(nameLine, LEFT + 15, top - 36 - index * 14, 11, true)));
+      const imageName = imageNames.get(product.id) || '';
+      const image = productImages[product.id];
+      commands.push(...drawProductImage(imageName, LEFT + 14, bottom + 10, 84, height - 20, image));
+      if (image) currentPage.images.add(imageName);
+      const detailsX = LEFT + 110;
+      commands.push(text('OFERTA', detailsX, top - 18, 7, true, accent));
+      nameLines.forEach((nameLine, index) => commands.push(text(nameLine, detailsX, top - 36 - index * 14, 11, true)));
       let descriptionY = top - 38 - nameLines.length * 14;
       if (category) {
-        commands.push(text(category.toLocaleUpperCase('es'), LEFT + 15, descriptionY, 6, true, '0.53 0.51 0.62'));
+        commands.push(text(category.toLocaleUpperCase('es'), detailsX, descriptionY, 6, true, '0.53 0.51 0.62'));
         descriptionY -= 11;
       }
       descriptionLines.forEach((descriptionLine) => {
-        commands.push(text(descriptionLine, LEFT + 15, descriptionY, 8, false, '0.43 0.42 0.51'));
+        commands.push(text(descriptionLine, detailsX, descriptionY, 8, false, '0.43 0.42 0.51'));
         descriptionY -= 11;
       });
-      const priceX = RIGHT - 136;
+      const priceX = RIGHT - 126;
       const currentPrice = formatMoney(priceFor(product), business.currency_symbol || 'C$');
       const regularPrice = formatMoney(Number(product.regular_price), business.currency_symbol || 'C$');
       commands.push(text(regularPrice, priceX, top - 34, 8, false, '0.54 0.53 0.60'));
@@ -163,16 +220,21 @@ export function buildCatalogPdf(business: Business, sourceProducts: Product[]): 
       commands.push(text(category.toLocaleUpperCase('es'), LEFT, y, 8, true, accent));
       y -= 16;
       for (const product of categoryProducts) {
-        const descriptionLines = truncateLines(product.description?.trim() || 'Disponible en este catalogo.', 78, 2);
+        const descriptionLines = truncateLines(product.description?.trim() || 'Disponible en este catalogo.', 68, 2);
         const name = `${product.name}${product.variant_label ? ` - ${product.variant_label}` : ''}`;
-        const nameLines = truncateLines(name, 65, 2);
-        const height = Math.max(52, 26 + nameLines.length * 12 + descriptionLines.length * 10);
+        const nameLines = truncateLines(name, 57, 2);
+        const height = Math.max(62, 12 + nameLines.length * 12 + descriptionLines.length * 10);
         ensureSpace(height + 4);
         const top = y;
-        nameLines.forEach((nameLine, index) => commands.push(text(nameLine, LEFT, top - 13 - index * 12, 9, true)));
+        const imageName = imageNames.get(product.id) || '';
+        const image = productImages[product.id];
+        commands.push(...drawProductImage(imageName, LEFT, top - height + 4, 50, height - 8, image));
+        if (image) currentPage.images.add(imageName);
+        const detailsX = LEFT + 62;
+        nameLines.forEach((nameLine, index) => commands.push(text(nameLine, detailsX, top - 13 - index * 12, 9, true)));
         let descriptionY = top - 17 - nameLines.length * 12;
         descriptionLines.forEach((descriptionLine) => {
-          commands.push(text(descriptionLine, LEFT, descriptionY, 7.5, false, '0.43 0.42 0.51'));
+          commands.push(text(descriptionLine, detailsX, descriptionY, 7.5, false, '0.43 0.42 0.51'));
           descriptionY -= 10;
         });
         const productPrice = formatMoney(priceFor(product), business.currency_symbol || 'C$');
@@ -188,23 +250,36 @@ export function buildCatalogPdf(business: Business, sourceProducts: Product[]): 
   }
 
   pages.forEach((page, index) => {
-    page.push(line(LEFT, FOOTER_Y + 8, RIGHT, FOOTER_Y + 8, '0.89 0.88 0.92'));
-    page.push(text(`${business.name}  |  Catalogo de productos`, LEFT, FOOTER_Y - 6, 7, false, '0.53 0.52 0.60'));
-    page.push(text(`${index + 1} / ${pages.length}`, RIGHT - 30, FOOTER_Y - 6, 7, false, '0.53 0.52 0.60'));
+    page.commands.push(line(LEFT, FOOTER_Y + 8, RIGHT, FOOTER_Y + 8, '0.89 0.88 0.92'));
+    page.commands.push(text(`${business.name}  |  Catalogo de productos`, LEFT, FOOTER_Y - 6, 7, false, '0.53 0.52 0.60'));
+    page.commands.push(text(`${index + 1} / ${pages.length}`, RIGHT - 30, FOOTER_Y - 6, 7, false, '0.53 0.52 0.60'));
   });
 
   const objects: string[] = [];
   objects[1] = '<< /Type /Catalog /Pages 2 0 R >>';
-  const firstPageObject = 5;
-  const pageReferences = pages.map((_, index) => `${firstPageObject + index * 2} 0 R`).join(' ');
-  objects[2] = `<< /Type /Pages /Kids [${pageReferences}] /Count ${pages.length} >>`;
+  objects[2] = '';
   objects[3] = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>';
   objects[4] = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>';
+  const imageObjectIds = new Map<string, number>();
+  for (const [productId, image] of Object.entries(productImages)) {
+    const imageObjectId = objects.length;
+    imageObjectIds.set(productId, imageObjectId);
+    const hex = Array.from(image.data, (byte) => byte.toString(16).padStart(2, '0')).join('');
+    objects[imageObjectId] = `<< /Type /XObject /Subtype /Image /Width ${image.width} /Height ${image.height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter [/ASCIIHexDecode /DCTDecode] /Length ${hex.length + 1} >>\nstream\n${hex}>\nendstream`;
+  }
+  const firstPageObject = objects.length;
+  const pageReferences = pages.map((_, index) => `${firstPageObject + index * 2} 0 R`).join(' ');
+  objects[2] = `<< /Type /Pages /Kids [${pageReferences}] /Count ${pages.length} >>`;
   pages.forEach((page, index) => {
     const pageObject = firstPageObject + index * 2;
     const contentObject = pageObject + 1;
-    const stream = page.join('\n');
-    objects[pageObject] = `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${PAGE_WIDTH} ${PAGE_HEIGHT}] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents ${contentObject} 0 R >>`;
+    const stream = page.commands.join('\n');
+    const xObjectResources = [...page.images].map((imageName) => {
+      const productId = [...imageNames.entries()].find(([, name]) => name === imageName)?.[0];
+      return productId ? `/${imageName} ${imageObjectIds.get(productId)} 0 R` : '';
+    }).filter(Boolean).join(' ');
+    const xObjectDict = xObjectResources ? ` /XObject << ${xObjectResources} >>` : '';
+    objects[pageObject] = `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${PAGE_WIDTH} ${PAGE_HEIGHT}] /Resources << /Font << /F1 3 0 R /F2 4 0 R >>${xObjectDict} >> /Contents ${contentObject} 0 R >>`;
     objects[contentObject] = `<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`;
   });
 
