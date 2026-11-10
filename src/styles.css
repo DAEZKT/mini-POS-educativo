@@ -163,3 +163,4 @@
 @media(max-width:850px){.dashboard-grid{grid-template-columns:minmax(0,1fr)}}
 @media(max-width:650px){.bar-chart{gap:clamp(2px,1vw,5px);padding-right:0;padding-left:0}.bar-chart-dense{overflow-x:auto;overflow-y:hidden}.bar-chart-dense .bar-column>small{max-width:100%;overflow:hidden;text-overflow:clip}.ranking-row{gap:8px}.rank-product{min-width:0}}
 .customers-panel.history-table-panel{overflow:visible}.history-action-menu a[role="menuitem"]{display:flex;align-items:center;gap:10px;min-height:36px;padding:0 10px;border-radius:7px;color:#555466;text-align:left;font-size:11px;font-weight:600}.history-action-menu a[role="menuitem"]:hover{background:#f6f5fb;color:var(--brand)}
+@media(max-width:850px){.topbar{position:sticky;top:0;z-index:40}}
