@@ -767,10 +767,35 @@ function Dashboard({ business, sales, allSales, customerCount, total, products, 
   }, [sales, period]);
   const chartMax = Math.max(...chartData.map((bucket) => bucket.amount), 1);
   const denseChart = period === '30';
+  const [chartTip, setChartTip] = useState<{ key: string; label: string; amount: number; left: number; top: number } | null>(null);
+  const selectChartBucket = (element: HTMLDivElement, bucket: (typeof chartData)[number]) => {
+    const bounds = element.getBoundingClientRect();
+    const width = Math.min(168, window.innerWidth - 16);
+    const left = Math.min(Math.max(8, bounds.left + bounds.width / 2 - width / 2), window.innerWidth - width - 8);
+    const top = bounds.top > 58 ? bounds.top - 52 : Math.min(bounds.bottom + 8, window.innerHeight - 50);
+    setChartTip((current) => current?.key === bucket.key ? null : { key: bucket.key, label: bucket.label, amount: bucket.amount, left, top });
+  };
+  useEffect(() => {
+    if (!chartTip) return;
+    const dismiss = (event: PointerEvent) => {
+      if (!(event.target as Element).closest?.('[data-chart-bucket]')) setChartTip(null);
+    };
+    const dismissOnKey = (event: KeyboardEvent) => { if (event.key === 'Escape') setChartTip(null); };
+    const dismissOnScroll = () => setChartTip(null);
+    document.addEventListener('pointerdown', dismiss);
+    document.addEventListener('keydown', dismissOnKey);
+    window.addEventListener('scroll', dismissOnScroll, true);
+    return () => {
+      document.removeEventListener('pointerdown', dismiss);
+      document.removeEventListener('keydown', dismissOnKey);
+      window.removeEventListener('scroll', dismissOnScroll, true);
+    };
+  }, [chartTip]);
+  useEffect(() => setChartTip(null), [period]);
   const chartDescription = period === 'all' ? 'Total vendido por mes · últimos 12 meses' : `Total vendido por día · últimos ${period} días`;
   return <><PageHeading eyebrow="VISTA GENERAL" title={`Hola, ${business?.name || 'emprendedor'}.`} description="Aquí tienes un vistazo de cómo va tu negocio." action={<div className="dashboard-report-actions"><select className="select-control period-select" value={period} onChange={(e) => setPeriod(e.target.value as '7' | '30' | 'all')}><option value="7">Últimos 7 días</option><option value="30">Últimos 30 días</option><option value="all">Todo el historial</option></select><button className="button button-outline" onClick={downloadReport}><FileText size={15} /> Descargar reporte</button></div>} />
     <div className="stats-grid"><StatCard label="Ventas del período" value={formatMoney(total, currencySymbol)} icon={BarChart3} hint={sales.length ? `${sales.length} ventas registradas` : 'Aún no hay ventas'} /><StatCard label="Ventas realizadas" value={String(sales.length)} icon={ShoppingBag} hint="En el período seleccionado" /><StatCard label="Productos activos" value={String(activeCount)} icon={Package} hint={`De ${products.length} productos registrados`} /></div>
-    <div className="dashboard-grid"><section className="panel sales-chart-panel"><div className="panel-heading"><div><h2>Actividad de ventas</h2><p>{chartDescription}</p></div><span className="tiny-tag"><span className="green-dot" /> EN VIVO</span></div>{sales.length === 0 ? <div className="chart-empty"><span><BarChart3 size={23} /></span><strong>Aún no hay ventas en este período</strong><p>Cuando registres una venta, se sumará al día o mes correspondiente.</p></div> : <div className={`bar-chart ${denseChart ? 'bar-chart-dense' : ''}`}>{chartData.map((bucket, index) => <div className="bar-column" key={bucket.key} title={`${bucket.label}: ${formatMoney(bucket.amount, currencySymbol)}`} aria-label={`${bucket.label}: ${formatMoney(bucket.amount, currencySymbol)}`}><div className="bar-value">{denseChart ? '' : formatMoney(bucket.amount, currencySymbol)}</div><div className="bar-track"><div className={`bar-fill ${bucket.amount > 0 ? '' : 'bar-fill-empty'}`} style={{ height: `${bucket.amount > 0 ? Math.max(bucket.amount / chartMax * 100, 4) : 0}%` }} /></div><small>{denseChart && index % 5 !== 0 && index !== chartData.length - 1 ? '' : bucket.label}</small></div>)}</div>}</section>
+    <div className="dashboard-grid"><section className="panel sales-chart-panel"><div className="panel-heading"><div><h2>Actividad de ventas</h2><p>{chartDescription}<span className="chart-tap-hint"> · Toca una barra para ver el monto</span></p></div><span className="tiny-tag"><span className="green-dot" /> EN VIVO</span></div>{sales.length === 0 ? <div className="chart-empty"><span><BarChart3 size={23} /></span><strong>Aún no hay ventas en este período</strong><p>Cuando registres una venta, se sumará al día o mes correspondiente.</p></div> : <div className={`bar-chart ${denseChart ? 'bar-chart-dense' : ''}`}>{chartData.map((bucket, index) => <div className={`bar-column ${chartTip?.key === bucket.key ? 'bar-column-selected' : ''}`} key={bucket.key} data-chart-bucket={bucket.key} role="button" tabIndex={0} aria-pressed={chartTip?.key === bucket.key} title={`${bucket.label}: ${formatMoney(bucket.amount, currencySymbol)}`} aria-label={`${bucket.label}: ${formatMoney(bucket.amount, currencySymbol)}`} onClick={(event)=>selectChartBucket(event.currentTarget,bucket)} onKeyDown={(event)=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();selectChartBucket(event.currentTarget,bucket);}}}><div className="bar-value">{denseChart ? '' : formatMoney(bucket.amount, currencySymbol)}</div><div className="bar-track"><div className={`bar-fill ${bucket.amount > 0 ? '' : 'bar-fill-empty'}`} style={{ height: `${bucket.amount > 0 ? Math.max(bucket.amount / chartMax * 100, 4) : 0}%` }} /></div><small>{denseChart && index % 5 !== 0 && index !== chartData.length - 1 ? '' : bucket.label}</small></div>)}</div>}{chartTip&&<div className="bar-chart-touch-tooltip" style={{left:chartTip.left,top:chartTip.top}} role="status" aria-live="polite"><small>{chartTip.label}</small><strong>{formatMoney(chartTip.amount,currencySymbol)}</strong></div>}</section>
       <section className="panel best-panel"><div className="panel-heading"><div><h2>Más vendidos</h2><p>Participación en unidades vendidas</p></div></div>{bestSellers.length ? <div className="ranking-list">{bestSellers.map((item, index) => <div className="ranking-row" key={item.name}><span className={`rank-number rank-${index + 1}`}>{String(index + 1).padStart(2, '0')}</span><span className="rank-product"><strong>{item.name}</strong><small>{item.count} {item.name === 'Demás productos' ? 'unidades acumuladas' : 'unidades'}</small></span><span className="rank-percentage">{new Intl.NumberFormat('es-NI', { maximumFractionDigits: 1 }).format(item.percentage)}%</span><span className="rank-bar"><i style={{ width: `${item.percentage}%` }} /></span></div>)}</div> : <div className="mini-empty">Los productos más vendidos aparecerán aquí cuando registres ventas.</div>}<div className="best-footer"><span><ArrowUpRight size={15} /> Unidades vendidas</span><span>{bestSellers.reduce((sum, item) => sum + item.count, 0)}</span></div></section></div>
   </>;
 }
