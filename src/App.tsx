@@ -851,7 +851,7 @@ function SalePage({ products, categories, customers, customersLoading, currencyS
   const displayedProducts = visibleProducts.slice(0, visibleProductCount);
   const itemCount = cart.reduce((count, row) => count + row.quantity, 0);
   const selectCategory = (categoryId: string) => { setSelectedCategory(categoryId); setShowCategoryFilters(false); };
-  return <div className="pos-page">
+  return <div className={`pos-page ${mobilePanel === 'order' ? 'pos-order-active' : ''}`}>
     <div className="pos-mobile-tabs"><button className={mobilePanel === 'catalog' ? 'active' : ''} onClick={() => setMobilePanel('catalog')}><ShoppingBag size={15} /> Catálogo</button><button className={mobilePanel === 'order' ? 'active' : ''} onClick={() => setMobilePanel('order')}><ShoppingCart size={15} /> Tu venta{itemCount > 0 && <span>{itemCount}</span>}</button></div>
     <div className="pos-layout">
       <section className={`pos-products ${mobilePanel === 'order' ? 'mobile-hidden' : ''}`}>
