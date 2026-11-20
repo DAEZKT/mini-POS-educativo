@@ -39,11 +39,16 @@ La migración instala las tablas de negocio, restricciones, RLS y funciones SQL 
 
 ### Control de acceso: modo personal y modo SaaS educativo
 
-La migración `database/migrations/202611080001_installation_access_control.sql` añade el control de acceso para toda la instalación. Inclúyela al final de la secuencia de migraciones, después de `202611070005_link_customers_to_sales.sql`. No edites ni vuelvas a ejecutar migraciones anteriores.
+Después de `202611070005_link_customers_to_sales.sql`, aplica las cuatro migraciones de control de acceso en este orden:
 
-Para conservar las ventas como un historial auditable, aplica después `database/migrations/202611080002_sales_maintenance.sql`. Agrega corrección del cliente asociado y anulación con motivo. Anular no elimina la fila ni reutiliza el consecutivo; las ventas anuladas permanecen en el historial y se excluyen del resumen. La edición de cliente conserva productos, precios e importe original; una corrección monetaria se registra anulando la venta y creando otra.
+1. `202611080001_installation_access_tables.sql` crea las tablas y prepara el estado de acceso.
+2. `202611080002_installation_access_functions.sql` crea las funciones para consultar la instalación y administrar cuentas.
+3. `202611080003_installation_access_policies.sql` aplica las políticas de seguridad a los datos privados.
+4. `202611080004_secure_sales_order_functions.sql` crea las operaciones protegidas para ventas y pedidos.
 
-Después aplica `database/migrations/202611080003_confirmed_record_deletion.sql` para habilitar la eliminación de productos y clientes no usados. La app exige copiar y pegar el nombre exacto; Neon repite esa comprobación y bloquea la eliminación si hay una venta o pedido web vinculado. Las ventas y pedidos conservan sus referencias históricas.
+Para conservar las ventas como un historial auditable, aplica después `database/migrations/202611080005_sales_maintenance.sql`. Agrega corrección del cliente asociado y anulación con motivo. Anular no elimina la fila ni reutiliza el consecutivo; las ventas anuladas permanecen en el historial y se excluyen del resumen. La edición de cliente conserva productos, precios e importe original; una corrección monetaria se registra anulando la venta y creando otra.
+
+Después aplica `database/migrations/202611080006_confirmed_record_deletion.sql` para habilitar la eliminación de productos y clientes no usados. La app exige copiar y pegar el nombre exacto; Neon repite esa comprobación y bloquea la eliminación si hay una venta o pedido web vinculado. Las ventas y pedidos conservan sus referencias históricas.
 
 Aplica también `database/migrations/202611090001_reject_installation_access.sql` para distinguir solicitudes rechazadas de cuentas aprobadas cuyo acceso se revocó. En **Accesos**, las pendientes ofrecen **Aprobar** y **Rechazar**; las aprobadas ofrecen **Revocar acceso**; las rechazadas pueden volver a pendiente con **Reconsiderar**.
 
@@ -165,7 +170,7 @@ La subida desde `npm run dev` no incluye la función `/api` de Vercel. Para prob
 1. En Cloudflare Turnstile crea un widget para los dominios de producción y Preview que usarás. Su sitekey es pública; su secret key es privada.
 2. En Vercel configura `VITE_TURNSTILE_SITE_KEY` con la sitekey y `TURNSTILE_SECRET_KEY` con la secret key. No uses el prefijo `VITE_` para la clave secreta.
 3. Agrega `DATABASE_URL` como variable secreta de servidor en Vercel. Copia la conexión PostgreSQL de la branch correcta de Neon; nunca la expongas al navegador ni la pongas en `.env.example`.
-4. Aplica las migraciones de pedidos, clientes, ventas y control de acceso en orden y en esa misma branch: `202611050004_public_catalog_orders.sql`, `202611060001_public_order_details.sql`, `202611070001_accept_google_maps_query_urls.sql`, `202611070002_public_orders_to_sales.sql`, `202611070003_manual_customer_management.sql`, `202611070004_preserve_customers_and_confirm_order_completion.sql`, `202611070005_link_customers_to_sales.sql`, `202611080001_installation_access_control.sql`, `202611080002_sales_maintenance.sql`, `202611080003_confirmed_record_deletion.sql` y `202611090001_reject_installation_access.sql`.
+4. Aplica las migraciones de pedidos, clientes, ventas y control de acceso en orden y en esa misma branch: `202611050004_public_catalog_orders.sql`, `202611060001_public_order_details.sql`, `202611070001_accept_google_maps_query_urls.sql`, `202611070002_public_orders_to_sales.sql`, `202611070003_manual_customer_management.sql`, `202611070004_preserve_customers_and_confirm_order_completion.sql`, `202611070005_link_customers_to_sales.sql`, `202611080001_installation_access_tables.sql`, `202611080002_installation_access_functions.sql`, `202611080003_installation_access_policies.sql`, `202611080004_secure_sales_order_functions.sql`, `202611080005_sales_maintenance.sql`, `202611080006_confirmed_record_deletion.sql` y `202611090001_reject_installation_access.sql`.
 5. Despliega de nuevo. El formulario comprueba el reto en el servidor antes de crear un pedido; la función de Neon ya no acepta llamadas públicas directas.
 6. El cliente puede indicar dirección y opcionalmente compartir un enlace HTTPS de Google Maps. El producto admite una etiqueta opcional de variante/presentación. Ambos datos quedan guardados como información del cliente/pedido y se incluyen en el texto preparado para WhatsApp.
 
@@ -220,9 +225,9 @@ Si la función y el permiso existen, pero sigue el error, actualizar o volver a 
 - Existe un Vercel Blob store público conectado al proyecto y su `BLOB_READ_WRITE_TOKEN` está disponible para Production/Preview.
 - La migración de imágenes se aplicó a la misma branch de Neon usada por la app.
 - Neon Auth permite el dominio de producción.
-- `202611080001_installation_access_control.sql` está aplicada y el propietario inicial quedó configurado como administrador.
-- `202611080002_sales_maintenance.sql` está aplicada para habilitar edición de cliente y anulación de ventas.
-- `202611080003_confirmed_record_deletion.sql` está aplicada para habilitar eliminaciones confirmadas y proteger referencias históricas.
+- `202611080001_installation_access_tables.sql`, `202611080002_installation_access_functions.sql`, `202611080003_installation_access_policies.sql` y `202611080004_secure_sales_order_functions.sql` están aplicadas; el propietario inicial quedó configurado como administrador.
+- `202611080005_sales_maintenance.sql` está aplicada para habilitar edición de cliente y anulación de ventas.
+- `202611080006_confirmed_record_deletion.sql` está aplicada para habilitar eliminaciones confirmadas y proteger referencias históricas.
 - `202611090001_reject_installation_access.sql` está aplicada para distinguir rechazos de revocaciones y permitir reconsiderar solicitudes.
 - El modo de acceso elegido (Personal o SaaS educativo) coincide con quién administrará las altas.
 - RLS permanece habilitado y las políticas y funciones de la migración están presentes.

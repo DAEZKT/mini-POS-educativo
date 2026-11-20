@@ -2,7 +2,7 @@
 
 ## Autenticación y acceso a datos
 
-Neon Auth gestiona registro, inicio de sesión y sesiones. Neon Data API recibe las peticiones del navegador y valida los JWT. La migración `202611080001_installation_access_control.sql` añade el estado de autorización por usuario y los modos `personal` y `saas`. Las políticas RLS y las funciones privilegiadas deben comprobar tanto la autorización aprobada como la propiedad indicada por `auth.user_id()`.
+Neon Auth gestiona registro, inicio de sesión y sesiones. Neon Data API recibe las peticiones del navegador y valida los JWT. Las migraciones `202611080001_installation_access_tables.sql` a `202611080004_secure_sales_order_functions.sql` añaden el estado de autorización por usuario, los modos `personal` y `saas`, las políticas RLS y las funciones protegidas. Estas funciones deben comprobar tanto la autorización aprobada como la propiedad indicada por `auth.user_id()`.
 
 La cuenta administradora inicial se asigna con una acción SQL del propietario de la base de datos. No se debe promover automáticamente al primer usuario que se registre. En modo `personal`, solo administradores aprobados pueden usar la instalación; en modo `saas`, el superadmin debe aprobar cada cuenta antes de que pueda crear o consultar un negocio.
 
@@ -22,9 +22,9 @@ El catálogo debe publicarse mediante `get_public_catalog(slug)`, que devuelve s
 
 `create_sale(items)` debe requerir una sesión autenticada, comprobar que cada producto activo pertenece al negocio del usuario, validar cantidades enteras positivas y calcular los importes a partir de los precios vigentes en la base de datos. Venta y detalles deben guardarse de forma transaccional para evitar registros parciales.
 
-La migración `202611080002_sales_maintenance.sql` agrega funciones protegidas para corregir el cliente asociado o anular una venta con motivo. La anulación conserva el consecutivo y los detalles; no borra el historial y los reportes excluyen las ventas con estado `voided`. No se permite editar directamente los productos, cantidades ni precios de una venta existente.
+La migración `202611080005_sales_maintenance.sql` agrega funciones protegidas para corregir el cliente asociado o anular una venta con motivo. La anulación conserva el consecutivo y los detalles; no borra el historial y los reportes excluyen las ventas con estado `voided`. No se permite editar directamente los productos, cantidades ni precios de una venta existente.
 
-La migración `202611080003_confirmed_record_deletion.sql` permite eliminar productos y clientes solo si no tienen ventas ni pedidos web asociados. La app pide copiar el nombre exacto, y los RPC vuelven a comprobar ese nombre, la propiedad del negocio, la autorización vigente y las referencias antes de borrar. La interfaz mejora la confirmación, pero la regla de integridad está en PostgreSQL.
+La migración `202611080006_confirmed_record_deletion.sql` permite eliminar productos y clientes solo si no tienen ventas ni pedidos web asociados. La app pide copiar el nombre exacto, y los RPC vuelven a comprobar ese nombre, la propiedad del negocio, la autorización vigente y las referencias antes de borrar. La interfaz mejora la confirmación, pero la regla de integridad está en PostgreSQL.
 
 La migración `202611090001_reject_installation_access.sql` añade el estado `rejected` para las solicitudes que no se aprueban. Los usuarios rechazados no pasan las políticas RLS ni las comprobaciones de autorización. El superadmin puede devolver una solicitud rechazada a `pending` para reconsiderarla; revocar se reserva para una cuenta que ya fue aprobada.
 

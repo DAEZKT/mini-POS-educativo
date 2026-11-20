@@ -1,113 +1,125 @@
-# Dos formas de instalar tu Mini POS
+# Poner en marcha tu Mini POS: guía sin terminal
 
-Esta guía te ayuda a elegir cómo instalar tu propia copia de Mini POS. En los dos caminos tendrás tus propios proyectos de Neon y Vercel, y podrás probar la app con tus datos.
+Esta ruta te lleva desde el repositorio de GitHub hasta tu propia aplicación publicada. No hace falta escribir comandos. Sí tendrás que copiar archivos SQL en Neon y completar formularios de configuración en los sitios web.
 
-> **Importante:** GitHub guarda el código, Neon guarda la base de datos y Vercel publica la aplicación en internet. Son tres servicios distintos y necesitarás crear una cuenta en cada uno.
+## Qué necesitas
 
-## ¿Qué camino te conviene?
+- Una cuenta en [GitHub](https://github.com/), [Neon](https://neon.tech/) y [Vercel](https://vercel.com/).
+- Acceso al repositorio de Mini POS.
+- Un correo que puedas confirmar para crear la cuenta propietaria.
 
-| Camino | Recomendado si… | ¿Necesitas instalar herramientas? |
-| --- | --- | --- |
-| 1. Desde GitHub y Vercel | Quieres instalar la app con pocos pasos y no planeas cambiar el código. | No necesitas VS Code para el despliegue inicial. |
-| 2. Desde tu computadora y VS Code | Quieres guardar una copia propia, aprender a cambiar la app o mantener tu repositorio. | Sí: VS Code, Git y Node.js. |
+GitHub guarda el código, Neon guarda las cuentas y los datos, y Vercel publica la aplicación. Crea los tres proyectos/cuentas con un correo que controles.
 
-En ambos casos, Neon necesita que configures la base de datos con las migraciones SQL que vienen en el repositorio. La diferencia principal es dónde guardas y administras el código.
+## 1. Haz tu copia en GitHub y abre VS Code
 
-### Fork y clone no son lo mismo
+1. Inicia sesión en GitHub y abre el repositorio de Mini POS.
+2. Pulsa **Fork** y crea una copia en tu cuenta. Esa copia será tuya; el repositorio original no se modifica.
+3. Abre tu fork. Pulsa la tecla **`.` (punto)**. Se abrirá el editor web de VS Code (github.dev) con los archivos de tu copia. Si el punto no funciona, escribe `dev` en vez del com en el enlace de tu copia.
+4. En el explorador de archivos del editor, confirma que ves carpetas como `database`, `src` y `api`. Para esta puesta en marcha solo usaremos `database/migrations` para copiar SQL; no necesitas cambiar código.
 
-- **Fork (bifurcar):** GitHub crea una copia del repositorio en tu cuenta. No descarga nada a tu computadora y no cambia el repositorio original.
-- **Clone (clonar):** Git descarga un repositorio a una carpeta de tu computadora para trabajar con sus archivos. Puedes clonar el repositorio original o tu fork.
+El editor web permite ver y copiar archivos. No necesitas instalar VS Code en la computadora para publicar desde GitHub y Vercel.
 
-Para publicar sin editar archivos, basta con hacer un **fork** e importar ese fork desde Vercel; no necesitas clonar. Para trabajar localmente con Git, primero haz un fork y después clona tu fork. Si prefieres empezar descargando un ZIP, puedes publicarlo como un repositorio nuevo con GitHub Desktop.
+## 2. Crea Neon y prepara la base de datos
 
----
+1. En Neon, crea un proyecto nuevo. Elige una región cercana a tus clientes y conserva la branch principal que se crea con el proyecto.
+2. En el proyecto/branch, habilita **Neon Auth** y **Neon Data API** si aún no están habilitados. Configura el inicio de sesión por correo según las opciones que te presente Neon.
+3. Anota las URL completas de **Auth** y **Data API** de esa misma branch. Vercel las pedirá más adelante. No uses URL de branches diferentes.
+4. Abre el **SQL Editor** de Neon y confirma que está conectado al proyecto, branch y base que acabas de crear.
+5. En el VS Code web, abre `database/migrations`. Abre los archivos de la lista siguiente en orden. En cada uno, selecciona y copia todo su contenido; vuelve al SQL Editor de Neon, pégalo y pulsa **Run/Ejecutar**. Espera a que termine sin error antes de pasar al siguiente.
 
-## Camino 1: desplegar desde GitHub
+Ejecuta cada archivo **una sola vez**, en este orden:
 
-Este camino crea una copia del repositorio en tu cuenta de GitHub mediante **Fork** (bifurcar). Luego conectas esa copia con Vercel. Vercel descarga el proyecto y lo publica por ti; no necesitas abrir ni editar el código.
+1. `202611010001_initial_schema.sql`
+2. `202611040001_product_images.sql`
+3. `202611040002_product_categories.sql`
+4. `202611050001_business_currency.sql`
+5. `202611050002_product_description_length.sql`
+6. `202611050003_business_currency_symbol.sql`
+7. `202611050004_public_catalog_orders.sql`
+8. `202611060001_public_order_details.sql`
+9. `202611070001_accept_google_maps_query_urls.sql`
+10. `202611070002_public_orders_to_sales.sql`
+11. `202611070003_manual_customer_management.sql`
+12. `202611070004_preserve_customers_and_confirm_order_completion.sql`
+13. `202611070005_link_customers_to_sales.sql`
+14. `202611080001_installation_access_tables.sql`
+15. `202611080002_installation_access_functions.sql`
+16. `202611080003_installation_access_policies.sql`
+17. `202611080004_secure_sales_order_functions.sql`
+18. `202611080005_sales_maintenance.sql`
+19. `202611080006_confirmed_record_deletion.sql`
+20. `202611090001_reject_installation_access.sql`
 
-### Pasos
+Antes de continuar, confirma en Neon que aparecen las tablas `installation_settings` e `installation_access`, y en la lista de funciones `get_installation_config` y `get_my_installation_access`. Si alguna falta, detente y no inicialices la cuenta propietaria todavía.
 
-1. **Crea tus cuentas** en GitHub, Neon y Vercel.
-2. **Crea tu copia en GitHub.** En la página del repositorio original, selecciona **Fork** y elige tu cuenta como destino. Así tendrás tu propio repositorio, sin modificar el original.
-3. **Crea un proyecto en Neon.** Habilita Neon Auth y Neon Data API para la branch que usarás. Guarda a mano las URL que Neon te indique.
-4. **Prepara la base de datos.** Abre la carpeta `database/migrations` de tu repositorio en GitHub y aplica cada archivo SQL, uno por uno, al SQL Editor de Neon. Sigue el orden de los nombres y ejecuta cada migración una sola vez. La última añade los modos Personal y SaaS educativo.
-5. **Conecta GitHub con Vercel.** En Vercel, importa tu repositorio (el que está bajo tu cuenta) y crea el proyecto.
-6. **Configura las variables de entorno en Vercel.** Añade `VITE_NEON_AUTH_URL` y `VITE_NEON_DATA_API_URL` con las URL de la misma branch de Neon.
-7. **Publica la app.** Inicia el despliegue desde Vercel y espera a que termine.
-8. **Autoriza el dominio.** En Neon Auth, permite el dominio que te asignó Vercel. Si Vercel publica un dominio distinto para producción, autoriza ese dominio también.
-9. **Inicializa el propietario.** Abre tu sitio, crea la cuenta del propietario y confirma su correo. Después sigue la sección **Inicializar el administrador propietario** de la guía técnica. Hazlo antes de compartir el enlace. En modo Personal, el registro de la interfaz se oculta después de este paso.
-10. **Prueba la instalación.** Inicia sesión con la cuenta autorizada y configura el negocio. Añade un producto de prueba, prueba su promoción, registra una venta y revisa el dashboard, el catálogo público y el comprobante.
+Si una ejecución muestra un error, detente y conserva el mensaje. No sigas con las siguientes ni vuelvas a ejecutar a ciegas un archivo que pudo haberse aplicado parcialmente. Estas migraciones preparan tablas, permisos y funciones que la aplicación necesita.
 
-### ¿Qué pasa con el repositorio original y las actualizaciones?
+## 3. Publica desde GitHub en Vercel
 
-El fork que creaste es tu propia copia. Las personas que descargan o hacen un fork de tu repositorio no pueden modificarlo. Solo tú y quienes tengan permiso de escritura pueden hacer cambios directamente. Si alguien te envía una propuesta de cambios (*pull request*), tú decides si la aceptas o la rechazas.
+1. En Vercel, elige **Add New… → Project** y conecta GitHub si te lo pide.
+2. Importa el fork de Mini POS que acabas de crear. Conserva los valores detectados por Vercel: el proyecto usa Vite y su configuración de publicación está incluida en el repositorio.
+3. Antes de pulsar **Deploy**, abre **Environment Variables** y crea estas tres variables con los valores de Neon, exactamente como los muestra Neon:
 
-Los cambios futuros del repositorio original del proyecto no se incorporan automáticamente a tu fork. Puedes seguir usando tu versión o aprender a traer actualizaciones más adelante.
+   - `VITE_NEON_AUTH_URL` — URL de Neon Auth.
+   - `VITE_NEON_DATA_API_URL` — URL de Neon Data API.
+   - `VITE_TURNSTILE_SITE_KEY` — sitekey pública de Cloudflare Turnstile, si habilitarás pedidos desde el catálogo.
 
-Vercel publica el código que está guardado en tu fork. Si quieres trabajar con los archivos en tu computadora, sigue el camino 2.
+   Las dos URL de Neon deben ser de la misma branch. Si todavía no configuraste Turnstile, puedes publicar primero sin esa variable, pero la protección del formulario de pedidos no quedará configurada.
 
----
+4. Pulsa **Deploy** y espera a que Vercel indique que el despliegue terminó correctamente. Abre el dominio `*.vercel.app` que te muestra.
+5. Copia ese dominio y agrégalo en Neon Auth a los dominios/orígenes permitidos. Añade el host que te asignó Vercel (por ejemplo `mi-mini-pos.vercel.app`); autoriza también `http://localhost:5173` solo si después harás pruebas locales. Si cambias variables, vuelve a desplegar desde Vercel para que la versión publicada las reciba.
 
-## Camino 2: descargar el proyecto y subir tu propia copia
+### Configuraciones adicionales para imágenes y pedidos
 
-Este camino deja el código en tu computadora y crea un repositorio bajo tu cuenta de GitHub. Es útil si quieres cambiar textos, estilos o funciones, o aprender a mantener tu versión.
+La aplicación básica puede abrirse sin estos pasos, pero estas funciones necesitan configuración de servidor:
 
-### Antes de empezar
+- **Fotos de productos:** en Vercel, crea un almacén **Blob** con acceso **Public** y conéctalo al proyecto. Vercel agrega `BLOB_READ_WRITE_TOKEN` como secreto. No lo crees como variable `VITE_`.
+- **Pedidos desde el catálogo:** crea un widget en Cloudflare Turnstile para el dominio de Vercel. En Vercel añade `VITE_TURNSTILE_SITE_KEY` (pública) y `TURNSTILE_SECRET_KEY` (privada). Añade también `DATABASE_URL` como variable secreta de servidor, copiando la conexión PostgreSQL de la misma branch de Neon. Nunca uses prefijo `VITE_` para secretos ni compartas esta URL. Vuelve a desplegar después de agregar las variables.
 
-Instala en tu computadora:
+## 4. Registra y autoriza a la persona propietaria
 
-- [Git](https://git-scm.com/downloads), para guardar versiones y subir el proyecto a GitHub.
-- [Visual Studio Code](https://code.visualstudio.com/), para abrir y editar los archivos.
-- [Node.js](https://nodejs.org/), que incluye npm y permite preparar la app localmente.
+Haz este paso antes de compartir el enlace público. El modo inicial es **Personal** y solo la cuenta que se autorice como administradora podrá entrar.
 
-### Pasos
+1. Abre el sitio publicado en Vercel y elige **Crear cuenta**. Registra el correo de la persona propietaria y confirma el correo si Neon lo solicita.
+2. En Neon, vuelve al SQL Editor de la branch correcta. Ejecuta esta consulta para encontrar la cuenta recién creada:
 
-1. **Descarga el repositorio** desde GitHub como archivo ZIP y descomprímelo. Para esta ruta, es la forma más sencilla de obtener los archivos sin configurar Git desde el primer paso.
-2. **Abre la carpeta del proyecto** en Visual Studio Code.
-3. **Instala las dependencias.** Abre una terminal en VS Code, dentro de la carpeta del proyecto, y ejecuta:
-
-   ```bash
-   npm install
+   ```sql
+   select id, email from neon_auth."user" order by "createdAt";
    ```
 
-4. **Crea tu proyecto Neon** y habilita Neon Auth y Neon Data API para la branch que usarás.
-5. **Aplica las migraciones.** Abre `database/migrations` en VS Code. Copia cada archivo SQL al SQL Editor de Neon y ejecútalo en orden, una sola vez por archivo. Anota cuáles aplicaste; la última crea el control de acceso.
-6. **Prepara la configuración local.** Copia `.env.example` como `.env.local` y completa `VITE_NEON_AUTH_URL` y `VITE_NEON_DATA_API_URL` con las URL de tu branch de Neon. No compartas ni subas `.env.local` a GitHub.
-7. **Permite el acceso local** en Neon Auth para `http://localhost:5173`.
-8. **Prueba en tu computadora** ejecutando `npm run dev` en la terminal de VS Code. Vite mostrará una dirección local para abrir en el navegador.
-9. **Crea un repositorio nuevo en tu cuenta de GitHub.** Usa un nombre distinto si quieres diferenciar tu versión, por ejemplo `mi-mini-pos`.
-10. **Sube el proyecto a tu repositorio.** Instala GitHub Desktop, inicia sesión con tu cuenta y agrega/publica la carpeta como un repositorio nuevo. Asegúrate de crear el repositorio bajo tu cuenta. También puedes usar Git desde la terminal siguiendo la ayuda oficial de GitHub.
-11. **Conecta tu nuevo repositorio con Vercel.** En Vercel, importa el repositorio que acabas de crear.
-12. **Configura en Vercel** `VITE_NEON_AUTH_URL` y `VITE_NEON_DATA_API_URL` con las mismas URL de Neon. No copies la contraseña de conexión PostgreSQL en esas variables.
-13. **Despliega y autoriza el dominio** de Vercel en Neon Auth.
-14. **Inicializa el propietario** con el procedimiento de la guía técnica antes de compartir el enlace de producción.
-15. **Repite las pruebas principales** desde el dominio publicado: inicio de sesión, marca, productos, promoción, venta, dashboard, catálogo y comprobante.
+3. Identifica con cuidado la fila de la persona propietaria. Copia su `id` (UUID) y correo.
+4. En el bloque siguiente sustituye `UUID_CONFIRMADO` por ese ID y `propietario@ejemplo.com` por el correo exacto de la cuenta. Ejecuta el bloque en SQL Editor:
 
-### Atención con las migraciones
+   ```sql
+   insert into public.installation_access (user_id, email, status, role, reviewed_at)
+   values ('UUID_CONFIRMADO', 'propietario@ejemplo.com', 'approved', 'admin', now())
+   on conflict (user_id) do update
+   set email = excluded.email, status = 'approved', role = 'admin', reviewed_at = now();
 
-Las migraciones cambian la estructura de la base de datos; no se ejecutan automáticamente al subir el código. Cuando haya una migración nueva:
+   update public.installation_settings
+   set access_mode = 'personal', initialized = true, updated_at = now()
+   where singleton;
+   ```
 
-1. Descarga o actualiza los archivos del proyecto.
-2. Lee la nueva migración y comprueba el proyecto y branch de Neon que vas a modificar.
-3. Pruébala primero en una branch de desarrollo o una base de pruebas.
-4. Aplícala en producción una sola vez y anota que quedó ejecutada.
-5. Despliega la versión de la app que necesita ese cambio.
+5. Cierra sesión en la aplicación y vuelve a entrar con la cuenta autorizada. Ya puedes crear el negocio. En modo Personal, el formulario de registro deja de mostrarse después de inicializar la instalación.
 
-No vuelvas a ejecutar una migración ya aplicada, a menos que el propio archivo indique explícitamente que es seguro hacerlo.
+## 5. Configura y prueba el negocio
 
----
+Antes de invitar clientes, prueba el sistema con información ficticia:
 
-## Reglas importantes para los dos caminos
+1. Entra a **Mi negocio** y configura nombre, colores, dirección y teléfono.
+2. Crea una categoría y un producto de prueba. Prueba precio y promoción; si configuraste Blob, prueba también una imagen.
+3. Registra una venta y revisa que aparezca en el dashboard e historial. Prueba imprimir el comprobante.
+4. Abre el catálogo público y revisa que muestre los productos activos. Si activaste pedidos, prueba el formulario y el enlace a WhatsApp.
+5. Descarga el catálogo PDF y confirma que se vea bien desde un teléfono.
 
-- **No compartas tu contraseña de Neon.** `DATABASE_URL` permite acceso administrativo a la base de datos. Para el Camino 1, copia los archivos SQL en el SQL Editor de Neon. Para el Camino 2, usa el SQL Editor o sigue la [guía técnica de despliegue](DEPLOYMENT.md) si vas a trabajar desde una terminal.
-- **No subas `.env.local` a GitHub** ni publiques contraseñas o claves administrativas. Las variables que empiezan por `VITE_` se usan en la app web; no pongas secretos en ellas.
-- **Empieza con datos de prueba.** Antes de usar la app con clientes, confirma el funcionamiento y prepara respaldos.
-- **Elige quién puede administrar.** Personal está pensado para una sola cuenta propietaria. SaaS educativo permite solicitudes aprobadas por el superadmin desde **Accesos**. Neon Auth todavía puede aceptar registros directos aunque la app oculte el formulario; las cuentas no aprobadas quedan sin acceso a los datos privados.
-- **Guarda el acceso a tus cuentas.** Tú administras GitHub, Neon, Vercel, el dominio y los datos de tu negocio.
+Cuando todo funcione, comparte el dominio de Vercel. Guarda en un lugar seguro el acceso a GitHub, Neon y Vercel. El código no hace copias de seguridad de la base de datos por ti: configura y revisa los respaldos de Neon.
 
-Si encuentras un paso que no coincide con las opciones actuales de Neon, GitHub o Vercel, consulta también la [guía técnica detallada](DEPLOYMENT.md), que explica las variables, la conexión SQL y la comprobación antes de producción.
+## Si algo cambia o falla
 
-### Si ya trabajas con Git
+- Si Neon muestra un error al ejecutar una migración, no la repitas automáticamente. Confirma que estás en la branch correcta y guarda el texto del error.
+- Si el sitio no conecta, revisa que las dos URL de Neon estén en Vercel y correspondan a la misma branch; luego haz un nuevo despliegue.
+- Si el registro o acceso falla, comprueba que el dominio de Vercel esté autorizado en Neon Auth y que la cuenta propietaria se haya aprobado con el procedimiento anterior.
+- Las futuras migraciones también se aplican manualmente en Neon, una vez y en el orden indicado por la guía de despliegue. No reemplaces una migración que ya ejecutaste.
 
-También puedes hacer un fork del repositorio, clonar **tu fork** a la computadora y abrir esa carpeta en VS Code. Cuando subas cambios, haz `push` a tu fork. No intentes subir cambios al repositorio original: no tendrás permiso y no es necesario para publicar tu propia instalación.
+Para detalles técnicos o migraciones de instalaciones existentes, consulta [Despliegue en Neon y Vercel](DEPLOYMENT.md). Esta guía describe una instalación nueva.
